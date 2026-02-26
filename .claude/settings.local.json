@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push:*)",
+      "Bash(az acr build:*)",
+      "Bash(az containerapp revision list:*)",
+      "Bash(az containerapp revision deactivate:*)"
+    ]
+  }
+}

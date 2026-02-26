@@ -15,22 +15,74 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+
 from converter import convert_pptx_to_scorm
 
 # ─────────────────────────────────────────────
-# API Key Auth
+# Auth Configuration
 # ─────────────────────────────────────────────
 
 API_KEY = os.environ.get("API_KEY", "")
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+ALLOWED_DOMAINS = [d.strip().lower() for d in os.environ.get("ALLOWED_DOMAINS", "").split(",") if d.strip()]
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+_google_token_header = APIKeyHeader(name="X-Google-Token", auto_error=False)
 
-async def verify_api_key(api_key: str = Depends(_api_key_header)):
-    """Require X-API-Key header when API_KEY env var is set."""
-    if not API_KEY:
-        return  # no key configured — allow all requests
-    if api_key != API_KEY:
+
+def _verify_google_token(token: str) -> dict:
+    """Validate a Google ID token. Returns claims dict or raises HTTPException."""
+    try:
+        claims = id_token.verify_oauth2_token(
+            token,
+            google_requests.Request(),
+            GOOGLE_CLIENT_ID,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid Google token: {exc}")
+
+    email = claims.get("email", "")
+    if not claims.get("email_verified"):
+        raise HTTPException(status_code=401, detail="Google account email not verified.")
+
+    if ALLOWED_DOMAINS:
+        domain = email.split("@")[-1].lower()
+        if domain not in ALLOWED_DOMAINS:
+            raise HTTPException(status_code=403, detail=f"Email domain '{domain}' is not allowed.")
+
+    return claims
+
+
+async def verify_auth(
+    api_key: str = Depends(_api_key_header),
+    google_token: str = Depends(_google_token_header),
+):
+    """
+    Accept either X-API-Key (programmatic) or X-Google-Token (browser UI).
+    If neither auth method is configured, all requests pass through.
+    """
+    has_oauth = bool(GOOGLE_CLIENT_ID)
+    has_api_key = bool(API_KEY)
+
+    if not has_oauth and not has_api_key:
+        return
+
+    if api_key and has_api_key:
+        if api_key == API_KEY:
+            return
+        raise HTTPException(status_code=401, detail="Invalid API key.")
+
+    if google_token and has_oauth:
+        _verify_google_token(google_token)
+        return
+
+    if has_api_key and not has_oauth:
         raise HTTPException(status_code=401, detail="Invalid or missing API key.")
+    if has_oauth and not has_api_key:
+        raise HTTPException(status_code=401, detail="Google sign-in required.")
+    raise HTTPException(status_code=401, detail="Authentication required.")
 
 # ─────────────────────────────────────────────
 # App Setup
@@ -487,6 +539,76 @@ UPLOAD_PAGE_HTML = """<!DOCTYPE html>
 
     .hidden { display: none !important; }
 
+    /* ── Auth overlay ── */
+    .auth-overlay {
+      position: fixed;
+      inset: 0;
+      background: #0f172a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      flex-direction: column;
+      gap: 24px;
+    }
+    .auth-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 48px 40px;
+      text-align: center;
+      max-width: 400px;
+      width: 100%;
+    }
+    .auth-card h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: #f1f5f9;
+      margin-bottom: 8px;
+    }
+    .auth-card p {
+      font-size: 14px;
+      color: #64748b;
+      margin-bottom: 32px;
+    }
+    #g_id_signin {
+      display: flex;
+      justify-content: center;
+    }
+    .auth-error {
+      color: #ef4444;
+      font-size: 13px;
+      margin-top: 16px;
+    }
+
+    /* ── User bar ── */
+    .user-bar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      color: #94a3b8;
+    }
+    .user-bar img {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 1px solid #334155;
+    }
+    .sign-out-btn {
+      background: none;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #64748b;
+      padding: 3px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .sign-out-btn:hover { color: #ef4444; border-color: #ef4444; }
+
     @media (max-width: 480px) {
       .page-header h1 { font-size: 20px; }
       .upload-zone { padding: 32px 16px; }
@@ -495,7 +617,24 @@ UPLOAD_PAGE_HTML = """<!DOCTYPE html>
   </style>
 </head>
 <body>
+<!-- Auth overlay — shown until signed in (only when Google OAuth is configured) -->
+<div id="auth-overlay" class="auth-overlay hidden">
+  <div class="auth-card">
+    <h2>Sign in to continue</h2>
+    <p>Use your organisation Google account to access the converter.</p>
+    <div id="g_id_signin"></div>
+    <div id="auth-error" class="auth-error hidden"></div>
+  </div>
+</div>
+
 <div class="container">
+  <!-- User bar — shown when signed in via Google -->
+  <div id="user-bar" class="user-bar hidden">
+    <img id="user-avatar" src="" alt=""/>
+    <span id="user-email"></span>
+    <button class="sign-out-btn" id="sign-out-btn">Sign out</button>
+  </div>
+
   <div class="page-header">
     <h1>PPTX to SCORM Converter</h1>
     <p>Convert PowerPoint presentations into SCORM 2004 e-learning packages</p>
@@ -580,6 +719,7 @@ UPLOAD_PAGE_HTML = """<!DOCTYPE html>
   </div>
 </div>
 
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 (function() {
   // ── Elements ──
@@ -605,6 +745,18 @@ UPLOAD_PAGE_HTML = """<!DOCTYPE html>
   const errorDetail = document.getElementById('error-detail');
   const retryBtn = document.getElementById('retry-btn');
   const validationError = document.getElementById('validation-error');
+
+  // ── Auth elements ──
+  const authOverlay = document.getElementById('auth-overlay');
+  const userBar = document.getElementById('user-bar');
+  const userAvatar = document.getElementById('user-avatar');
+  const userEmailEl = document.getElementById('user-email');
+  const signOutBtn = document.getElementById('sign-out-btn');
+  const authError = document.getElementById('auth-error');
+
+  var googleClientId = '';
+  var googleIdToken = '';
+  var authMode = 'none';  // 'none' | 'google' | 'apikey'
 
   let selectedFile = null;
   let lastBlobUrl = null;
@@ -767,7 +919,11 @@ UPLOAD_PAGE_HTML = """<!DOCTYPE html>
   function uploadFile(file, title, apiKey) {
     var xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/convert');
-    if (apiKey) xhr.setRequestHeader('X-API-Key', apiKey);
+    if (authMode === 'google' && googleIdToken) {
+      xhr.setRequestHeader('X-Google-Token', googleIdToken);
+    } else if (apiKey) {
+      xhr.setRequestHeader('X-API-Key', apiKey);
+    }
     xhr.responseType = 'blob';
 
     xhr.upload.addEventListener('progress', function(e) {
@@ -784,6 +940,17 @@ UPLOAD_PAGE_HTML = """<!DOCTYPE html>
         lastBlobUrl = URL.createObjectURL(xhr.response);
         triggerDownload(lastBlobUrl, filename);
         showResult(filename);
+      } else if ((xhr.status === 401 || xhr.status === 403) && authMode === 'google') {
+        // Token expired or domain rejected — re-prompt sign-in
+        googleIdToken = '';
+        hide(userBar);
+        authError.textContent = xhr.status === 403
+          ? 'Your email domain is not allowed.'
+          : 'Your session expired. Please sign in again.';
+        show(authError);
+        show(authOverlay);
+        renderGoogleButton();
+        resetToIdle();
       } else {
         // Parse error from JSON blob
         var reader = new FileReader();
@@ -831,8 +998,89 @@ UPLOAD_PAGE_HTML = """<!DOCTYPE html>
   anotherBtn.addEventListener('click', resetToIdle);
   retryBtn.addEventListener('click', resetToIdle);
 
+  // ── Google OAuth ──
+  function renderGoogleButton() {
+    google.accounts.id.renderButton(
+      document.getElementById('g_id_signin'),
+      { theme: 'filled_black', size: 'large', shape: 'rectangular', width: 280 }
+    );
+  }
+
+  function handleCredential(response) {
+    googleIdToken = response.credential;
+    // Decode JWT payload for display (server does real verification)
+    try {
+      var parts = googleIdToken.split('.');
+      var payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+      userEmailEl.textContent = payload.email || '';
+      if (payload.picture) { userAvatar.src = payload.picture; show(userAvatar); }
+    } catch(e) {}
+    show(userBar);
+    hide(authOverlay);
+    hide(authError);
+  }
+
+  function waitForGIS(fn) {
+    if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
+      fn();
+    } else {
+      setTimeout(function() { waitForGIS(fn); }, 100);
+    }
+  }
+
+  function initAuth() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/api/config');
+    xhr.onload = function() {
+      if (xhr.status === 200) {
+        try {
+          var cfg = JSON.parse(xhr.responseText);
+          googleClientId = cfg.googleClientId || '';
+        } catch(e) {}
+      }
+      if (googleClientId) {
+        authMode = 'google';
+        // Hide API key input — not needed with Google auth
+        apiKeyInput.style.display = 'none';
+        show(authOverlay);
+        waitForGIS(function() {
+          google.accounts.id.initialize({
+            client_id: googleClientId,
+            callback: handleCredential,
+            auto_select: false,
+            cancel_on_tap_outside: false
+          });
+          renderGoogleButton();
+        });
+      } else {
+        authMode = 'apikey';
+        hide(authOverlay);
+      }
+    };
+    xhr.onerror = function() {
+      authMode = 'apikey';
+      hide(authOverlay);
+    };
+    xhr.send();
+  }
+
+  signOutBtn.addEventListener('click', function() {
+    googleIdToken = '';
+    userEmailEl.textContent = '';
+    userAvatar.src = '';
+    hide(userBar);
+    if (authMode === 'google') {
+      google.accounts.id.disableAutoSelect();
+      show(authOverlay);
+      hide(authError);
+      renderGoogleButton();
+    }
+    resetToIdle();
+  });
+
   // ── Init ──
   resetToIdle();
+  initAuth();
 })();
 </script>
 </body>
@@ -866,6 +1114,12 @@ async def health_check():
     )
 
 
+@app.get("/api/config", include_in_schema=False)
+async def get_config():
+    """Public config for the browser (Google client ID only)."""
+    return JSONResponse({"googleClientId": GOOGLE_CLIENT_ID})
+
+
 @app.post(
     "/api/convert",
     tags=["conversion"],
@@ -884,7 +1138,7 @@ async def convert_presentation(
     background_tasks: BackgroundTasks,
     file: Annotated[UploadFile, File(description="The .pptx or .ppt file to convert")],
     title: Annotated[Optional[str], Form(description="Override the course title (optional)")] = None,
-    _key: None = Depends(verify_api_key),
+    _auth: None = Depends(verify_auth),
 ):
     """
     ## Convert a PowerPoint presentation to a SCORM 2004 e-learning package.
