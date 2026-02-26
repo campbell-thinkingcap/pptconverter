@@ -6,10 +6,9 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_RESOURCE_GROUP: pptconverter-rg
+  AZURE_RESOURCE_GROUP: rg-sslcheck
   AZURE_CONTAINER_APP: pptconverter
-  AZURE_CONTAINER_ENV: pptconverter-env
-  AZURE_LOCATION: eastus
+  ACR_NAME: acrsslcheck
 
 jobs:
   build-and-deploy:
@@ -24,14 +23,17 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Build and deploy to Container Apps
-        uses: azure/container-apps-deploy-action@v2
-        with:
-          resourceGroup: ${{ env.AZURE_RESOURCE_GROUP }}
-          containerAppName: ${{ env.AZURE_CONTAINER_APP }}
-          containerAppEnvironment: ${{ env.AZURE_CONTAINER_ENV }}
-          targetPort: 8000
-          ingress: external
-          imageToDeploy: ""
-          dockerfilePath: Dockerfile
-          environmentVariables: "API_KEY=secretref:api-key"
+      - name: Build image in ACR
+        run: |
+          az acr build \
+            --registry ${{ env.ACR_NAME }} \
+            --image pptconverter:${{ github.sha }} \
+            --image pptconverter:latest \
+            --file Dockerfile .
+
+      - name: Deploy to Container Apps
+        run: |
+          az containerapp update \
+            --name ${{ env.AZURE_CONTAINER_APP }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --image ${{ env.ACR_NAME }}.azurecr.io/pptconverter:${{ github.sha }}

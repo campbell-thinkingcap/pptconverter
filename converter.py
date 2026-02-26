@@ -755,10 +755,17 @@ createApp({{
       return pct;
     }});
 
+    function saveBookmark() {{
+      SCORM.setLocation(String(current.value));
+      const data = JSON.stringify(Array.from(visited.value));
+      SCORM.setSuspendData(data);
+    }}
+
     function markVisited(idx) {{
       visited.value.add(idx);
       const measure = visited.value.size / slides.value.length;
       SCORM.setProgress(measure);
+      saveBookmark();
 
       if (visited.value.size === slides.value.length && !completed.value) {{
         completed.value = true;
@@ -793,7 +800,27 @@ createApp({{
 
     onMounted(() => {{
       SCORM.init();
-      markVisited(0);
+
+      // Restore bookmark from previous session
+      const savedLoc = SCORM.getLocation();
+      const savedData = SCORM.getSuspendData();
+
+      if (savedData) {{
+        try {{
+          const arr = JSON.parse(savedData);
+          if (Array.isArray(arr)) {{
+            arr.forEach(i => visited.value.add(i));
+          }}
+        }} catch(e) {{ /* ignore corrupt data */ }}
+      }}
+
+      const resumeSlide = savedLoc ? parseInt(savedLoc, 10) : 0;
+      if (resumeSlide >= 0 && resumeSlide < slides.value.length) {{
+        current.value = resumeSlide;
+      }}
+
+      // Update progress from restored visited set
+      markVisited(current.value);
     }});
 
     onBeforeUnmount(() => {{
@@ -855,9 +882,13 @@ const SCORM = (() => {
     const result = api.Initialize('');
     if (result === 'true' || result === true) {
       _initialized = true;
-      api.SetValue('cmi.completion_status', 'incomplete');
-      api.SetValue('cmi.success_status', 'unknown');
-      api.SetValue('cmi.progress_measure', '0');
+      // Only set defaults if not resuming a previous session
+      const existingStatus = api.GetValue('cmi.completion_status');
+      if (!existingStatus || existingStatus === 'not attempted' || existingStatus === 'unknown') {
+        api.SetValue('cmi.completion_status', 'incomplete');
+        api.SetValue('cmi.success_status', 'unknown');
+        api.SetValue('cmi.progress_measure', '0');
+      }
       api.Commit('');
       console.log('[SCORM] Initialized.');
     } else {
@@ -873,6 +904,36 @@ const SCORM = (() => {
     api.SetValue('cmi.progress_measure', String(val.toFixed(4)));
     api.Commit('');
     console.log('[SCORM] Progress:', (val * 100).toFixed(1) + '%');
+  }
+
+  function setLocation(loc) {
+    if (!_initialized || _terminated) return;
+    const api = getAPI();
+    if (!api) return;
+    api.SetValue('cmi.location', String(loc));
+    api.Commit('');
+  }
+
+  function getLocation() {
+    if (!_initialized) return '';
+    const api = getAPI();
+    if (!api) return '';
+    return api.GetValue('cmi.location') || '';
+  }
+
+  function setSuspendData(data) {
+    if (!_initialized || _terminated) return;
+    const api = getAPI();
+    if (!api) return;
+    api.SetValue('cmi.suspend_data', data);
+    api.Commit('');
+  }
+
+  function getSuspendData() {
+    if (!_initialized) return '';
+    const api = getAPI();
+    if (!api) return '';
+    return api.GetValue('cmi.suspend_data') || '';
   }
 
   function complete() {
@@ -895,7 +956,7 @@ const SCORM = (() => {
     console.log('[SCORM] Terminated.');
   }
 
-  return { init, setProgress, complete, terminate };
+  return { init, setProgress, setLocation, getLocation, setSuspendData, getSuspendData, complete, terminate };
 })();
 """
 
