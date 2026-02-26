@@ -413,13 +413,23 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
   <style>
     *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
+    html, body {{
+      height: 100%;
+      overflow: hidden;
+    }}
+
     body {{
       font-family: 'Segoe UI', system-ui, sans-serif;
       background: #0f172a;
       color: #e2e8f0;
-      height: 100vh;
       display: flex;
       flex-direction: column;
+    }}
+
+    #app {{
+      display: flex;
+      flex-direction: column;
+      height: 100%;
       overflow: hidden;
     }}
 
@@ -674,6 +684,24 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
     }}
     .btn-restart:hover {{ background: #16a34a; }}
 
+    /* ── Close button ── */
+    .btn-close {{
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      font-size: 18px;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      line-height: 1;
+      flex-shrink: 0;
+      transition: color 0.15s, background 0.15s;
+    }}
+    .btn-close:hover {{
+      color: #f1f5f9;
+      background: #334155;
+    }}
+
     /* Scrollbar */
     .sidebar::-webkit-scrollbar {{ width: 4px; }}
     .sidebar::-webkit-scrollbar-track {{ background: transparent; }}
@@ -692,6 +720,7 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
       <span class="progress-label">{{{{progressPct}}}}%</span>
     </div>
     <span v-if="completed" class="completion-badge">✓ Completed</span>
+    <button class="btn-close" @click="closeCourse" title="Close course">✕</button>
   </div>
 
   <!-- Body -->
@@ -799,6 +828,14 @@ createApp({{
       goTo(0);
     }}
 
+    function closeCourse() {{
+      SCORM.terminate();
+      if (window.parent && window.parent !== window) {{
+        window.parent.postMessage({{ type: 'scorm-close' }}, '*');
+      }}
+      window.close();
+    }}
+
     onMounted(() => {{
       SCORM.init();
 
@@ -831,7 +868,7 @@ createApp({{
     window.addEventListener('beforeunload', () => SCORM.terminate());
 
     return {{ slides, current, visited, progressPct, showComplete, completed,
-              goTo, next, prev, restart }};
+              goTo, next, prev, restart, closeCourse }};
   }}
 }}).mount('#app');
 </script>
