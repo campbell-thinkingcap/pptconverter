@@ -40,7 +40,7 @@ def _run_to_html(run) -> str:
             r, g, b = int(str(rgb)[0:2], 16), int(str(rgb)[2:4], 16), int(str(rgb)[4:6], 16)
             luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
             if luminance > 0.85:
-                styles.append("color:#1e293b")
+                styles.append("color:#111111")
             else:
                 styles.append(f"color:#{rgb}")
     except (AttributeError, ValueError):
@@ -569,6 +569,7 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
     .slide-html-content .slide-content {{
       position: relative;
       width: 100%;
+      color: #111111;
       font-family: 'Segoe UI', Calibri, Arial, sans-serif;
     }}
     .slide-html-content .slide-content h1 {{
