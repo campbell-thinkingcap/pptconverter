@@ -12,6 +12,7 @@ import os
 import secrets
 import tempfile
 import time
+from dataclasses import dataclass
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
@@ -31,6 +32,17 @@ SERVER_URL = os.environ.get(
 )
 
 
+@dataclass
+class AuthCode:
+    """Auth code object with attributes the MCP SDK token handler expects."""
+    client_id: str
+    code_challenge: str
+    redirect_uri: str
+    redirect_uri_provided_explicitly: bool
+    scopes: list[str]
+    expires_at: float
+
+
 class SimpleOAuthProvider:
     """Minimal OAuth 2.1 provider for MCP auth.
 
@@ -40,7 +52,7 @@ class SimpleOAuthProvider:
 
     def __init__(self):
         self.clients: dict[str, OAuthClientInformationFull] = {}
-        self.auth_codes: dict[str, dict] = {}
+        self.auth_codes: dict[str, AuthCode] = {}
         self.access_tokens: dict[str, AccessToken] = {}
         self.refresh_tokens: dict[str, dict] = {}
 
@@ -57,13 +69,14 @@ class SimpleOAuthProvider:
     ) -> str:
         """Auto-approve: generate an auth code and redirect immediately."""
         code = secrets.token_urlsafe(48)
-        self.auth_codes[code] = {
-            "client_id": client.client_id,
-            "code_challenge": params.code_challenge,
-            "redirect_uri": str(params.redirect_uri),
-            "scopes": params.scopes or [],
-            "expires": time.time() + 300,
-        }
+        self.auth_codes[code] = AuthCode(
+            client_id=client.client_id,
+            code_challenge=params.code_challenge,
+            redirect_uri=str(params.redirect_uri),
+            redirect_uri_provided_explicitly=params.redirect_uri_provided_explicitly,
+            scopes=params.scopes or [],
+            expires_at=time.time() + 300,
+        )
         redirect = f"{params.redirect_uri}?code={code}"
         if params.state:
             redirect += f"&state={params.state}"
@@ -71,21 +84,26 @@ class SimpleOAuthProvider:
 
     async def load_authorization_code(
         self, client: OAuthClientInformationFull, authorization_code: str
-    ) -> str | None:
-        data = self.auth_codes.get(authorization_code)
-        if not data or data["client_id"] != client.client_id:
+    ) -> AuthCode | None:
+        auth_code = self.auth_codes.get(authorization_code)
+        if not auth_code or auth_code.client_id != client.client_id:
             return None
-        if time.time() > data["expires"]:
+        if time.time() > auth_code.expires_at:
             self.auth_codes.pop(authorization_code, None)
             return None
-        return authorization_code
+        return auth_code
 
     async def exchange_authorization_code(
-        self, client: OAuthClientInformationFull, authorization_code: str
+        self, client: OAuthClientInformationFull, authorization_code: AuthCode
     ) -> OAuthToken:
-        data = self.auth_codes.pop(authorization_code, None)
-        if not data:
-            raise ValueError("Invalid authorization code")
+        # Remove the code (one-time use) — find it by matching the object
+        code_str = None
+        for k, v in self.auth_codes.items():
+            if v is authorization_code:
+                code_str = k
+                break
+        if code_str:
+            self.auth_codes.pop(code_str, None)
 
         access_tok = secrets.token_urlsafe(48)
         refresh_tok = secrets.token_urlsafe(48)
@@ -94,12 +112,12 @@ class SimpleOAuthProvider:
         self.access_tokens[access_tok] = AccessToken(
             token=access_tok,
             client_id=client.client_id,
-            scopes=data.get("scopes", []),
+            scopes=authorization_code.scopes,
             expires_at=int(time.time()) + expires_in,
         )
         self.refresh_tokens[refresh_tok] = {
             "client_id": client.client_id,
-            "scopes": data.get("scopes", []),
+            "scopes": authorization_code.scopes,
         }
         return OAuthToken(
             access_token=access_tok,
