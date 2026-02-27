@@ -166,8 +166,7 @@ app.add_middleware(
 OUTPUT_DIR = tempfile.mkdtemp(prefix="scorm_output_")
 UPLOAD_DIR = tempfile.mkdtemp(prefix="scorm_uploads_")
 
-# In-memory registry: file_id → {"path": str, "filename": str, "created": float}
-staged_files: dict[str, dict] = {}
+# staged_files is imported from mcp_server (shared between FastAPI and MCP tools)
 
 
 # ─────────────────────────────────────────────

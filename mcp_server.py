@@ -6,6 +6,8 @@ Usage:
     python mcp_server.py                  # stdio transport (Claude Desktop)
     python mcp_server.py --transport sse  # SSE transport (remote)
 """
+import base64
+import hashlib
 import json
 import os
 import secrets
@@ -204,21 +206,38 @@ mcp = FastMCP(
 
 
 # ─────────────────────────────────────────────
-# Shared file staging registry (populated by main.py /api/upload)
+# Shared file staging registry
 # ─────────────────────────────────────────────
 
-# Imported by main.py to register uploaded files; read by MCP tools.
+# In-memory registry: id → {"path": str, "filename": str, "created": float}
+# Shared between MCP tools and FastAPI download endpoint.
 staged_files: dict[str, dict] = {}
 
+UPLOAD_DIR = tempfile.mkdtemp(prefix="mcp_uploads_")
 
-def _get_staged_path(file_id: str) -> tuple[str, str]:
-    """Look up a staged file by ID. Returns (path, filename) or raises."""
-    info = staged_files.get(file_id)
-    if not info or not os.path.exists(info["path"]):
-        raise FileNotFoundError(
-            f"file_id '{file_id}' not found. Upload the file first via POST /api/upload."
-        )
-    return info["path"], info["filename"]
+
+def _save_base64_file(file_content_base64: str, filename: str) -> str:
+    """Decode base64 content, save to temp file, return path."""
+    try:
+        raw = base64.b64decode(file_content_base64)
+    except Exception:
+        raise ValueError("Invalid base64 content. Ensure the file is base64-encoded.")
+
+    ext = os.path.splitext(filename)[1].lower() if filename else ".pptx"
+    if ext not in (".ppt", ".pptx"):
+        raise ValueError(f"Unsupported file type '{ext}'. Only .ppt and .pptx are accepted.")
+
+    file_id = hashlib.sha256(os.urandom(32)).hexdigest()[:16]
+    dest = os.path.join(UPLOAD_DIR, f"{file_id}{ext}")
+    with open(dest, "wb") as f:
+        f.write(raw)
+
+    staged_files[file_id] = {
+        "path": dest,
+        "filename": filename or f"presentation{ext}",
+        "created": time.time(),
+    }
+    return dest
 
 
 # ─────────────────────────────────────────────
@@ -226,24 +245,26 @@ def _get_staged_path(file_id: str) -> tuple[str, str]:
 # ─────────────────────────────────────────────
 
 @mcp.tool()
-def convert_presentation(file_id: str, course_title: str = "") -> str:
-    """Convert an uploaded PPTX/PPT file to a SCORM 2004 3rd Edition ZIP package.
+def convert_presentation(
+    file_content_base64: str,
+    filename: str = "presentation.pptx",
+    course_title: str = "",
+) -> str:
+    """Convert a PPTX/PPT file to a SCORM 2004 3rd Edition ZIP package.
 
-    WORKFLOW:
-    1. First upload the file via POST {server_url}/api/upload → returns a file_id
-    2. Then call this tool with the file_id
-    3. The result includes a download_url for the SCORM ZIP
+    Send the file content as base64 and get back a download URL for the SCORM ZIP.
 
     Args:
-        file_id: The file_id returned by POST /api/upload.
+        file_content_base64: The .pptx or .ppt file content, base64-encoded.
+        filename: Original filename (e.g. "My Slides.pptx"). Used for the output name.
         course_title: Optional override for the course title.
 
     Returns:
-        JSON with download_url, filename, and slide_count.
+        JSON with download_url for the SCORM ZIP package.
     """
     try:
-        pptx_path, original_name = _get_staged_path(file_id)
-    except FileNotFoundError as e:
+        pptx_path = _save_base64_file(file_content_base64, filename)
+    except ValueError as e:
         return json.dumps({"error": str(e)})
 
     output_dir = tempfile.mkdtemp(prefix="scorm_")
@@ -255,7 +276,6 @@ def convert_presentation(file_id: str, course_title: str = "") -> str:
         zip_size = os.path.getsize(zip_path)
 
         # Stage the result for download
-        import hashlib
         result_id = hashlib.sha256(os.urandom(32)).hexdigest()[:16]
         staged_files[result_id] = {
             "path": zip_path,
@@ -275,20 +295,24 @@ def convert_presentation(file_id: str, course_title: str = "") -> str:
 
 
 @mcp.tool()
-def get_presentation_info(file_id: str) -> str:
-    """Get metadata from an uploaded PPTX file without converting it.
+def get_presentation_info(
+    file_content_base64: str,
+    filename: str = "presentation.pptx",
+) -> str:
+    """Get metadata from a PPTX file without converting it.
 
-    Upload the file first via POST {server_url}/api/upload, then call this with the file_id.
+    Send the file content as base64 to preview slide count and titles.
 
     Args:
-        file_id: The file_id returned by POST /api/upload.
+        file_content_base64: The .pptx or .ppt file content, base64-encoded.
+        filename: Original filename (e.g. "My Slides.pptx").
 
     Returns:
         JSON with title, slide_count, and slide_titles.
     """
     try:
-        pptx_path, _ = _get_staged_path(file_id)
-    except FileNotFoundError as e:
+        pptx_path = _save_base64_file(file_content_base64, filename)
+    except ValueError as e:
         return json.dumps({"error": str(e)})
 
     try:
