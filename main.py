@@ -6,6 +6,7 @@ import os
 import time
 import tempfile
 import hashlib
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -19,6 +20,7 @@ from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 
 from converter import convert_pptx_to_scorm
+from mcp_server import mcp as mcp_server
 
 # ─────────────────────────────────────────────
 # Auth Configuration
@@ -85,6 +87,30 @@ async def verify_auth(
     raise HTTPException(status_code=401, detail="Authentication required.")
 
 # ─────────────────────────────────────────────
+# MCP Session Manager + App Lifespan
+# ─────────────────────────────────────────────
+
+# Build the MCP Starlette app (includes OAuth + MCP routes)
+_mcp_app = mcp_server.streamable_http_app()
+
+# Paths handled by the MCP Starlette app (OAuth + MCP endpoint)
+_MCP_PATHS = frozenset({
+    "/mcp",
+    "/authorize",
+    "/token",
+    "/register",
+    "/revoke",
+    "/.well-known/oauth-authorization-server",
+    "/.well-known/oauth-protected-resource",
+})
+
+@asynccontextmanager
+async def _lifespan(app):
+    """Start the MCP session manager alongside the FastAPI app."""
+    async with mcp_server.session_manager.run():
+        yield
+
+# ─────────────────────────────────────────────
 # App Setup
 # ─────────────────────────────────────────────
 
@@ -120,6 +146,7 @@ app = FastAPI(
         {"name": "conversion", "description": "Convert presentations to SCORM packages"},
         {"name": "health", "description": "Service health and metadata"},
     ],
+    lifespan=_lifespan,
 )
 
 app.add_middleware(
@@ -128,6 +155,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ─────────────────────────────────────────────
+# ASGI dispatcher: MCP paths → _mcp_app, everything else → FastAPI
+# ─────────────────────────────────────────────
+
 
 # Temp output storage (in production, use S3/blob storage)
 OUTPUT_DIR = tempfile.mkdtemp(prefix="scorm_output_")
@@ -1245,6 +1278,24 @@ async def api_info():
     }
 
 
+# ─────────────────────────────────────────────
+# ASGI dispatcher: MCP paths → _mcp_app, everything else → FastAPI
+# ─────────────────────────────────────────────
+
+_fastapi_app = app  # keep a ref to the raw FastAPI app
+
+
+async def combined_app(scope, receive, send):
+    """Route requests to MCP Starlette app or FastAPI based on path."""
+    if scope["type"] == "http" and scope.get("path") in _MCP_PATHS:
+        await _mcp_app(scope, receive, send)
+    else:
+        await _fastapi_app(scope, receive, send)
+
+
+app = combined_app  # uvicorn uses main:app
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

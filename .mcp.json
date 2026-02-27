@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "pptconverter": {
+      "type": "url",
+      "url": "https://pptconverter.calmbay-775ec59e.eastus.azurecontainerapps.io/mcp"
+    }
+  }
+}

@@ -209,7 +209,7 @@ def _text_shape_to_html(shape, pos_style: str) -> str:
     if not inner.strip():
         return ""
 
-    return f'<div style="{pos_style}{valign_css}{bg_css}overflow:hidden;">{inner}</div>'
+    return f'<div style="{pos_style}{valign_css}{bg_css}overflow:visible;">{inner}</div>'
 
 
 def _shape_to_html(
@@ -568,13 +568,14 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
       background: #fff;
       border-radius: 8px;
       box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-      overflow: auto;
+      overflow: visible;
       flex-shrink: 0;
     }}
 
     /* ── Slide HTML content ── */
     .slide-html-content {{
       width: 100%;
+      overflow: auto;
     }}
     .slide-html-content .slide-content {{
       position: relative;

@@ -6,3 +6,4 @@ Pillow>=10.0.0
 pywin32>=306; sys_platform == "win32"
 google-auth>=2.29.0
 requests>=2.31.0
+mcp[cli]>=1.0.0
