@@ -20,7 +20,7 @@ from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 
 from converter import convert_pptx_to_scorm
-from mcp_server import mcp as mcp_server
+from mcp_server import mcp as mcp_server, staged_files
 
 # ─────────────────────────────────────────────
 # Auth Configuration
@@ -162,8 +162,12 @@ app.add_middleware(
 # ─────────────────────────────────────────────
 
 
-# Temp output storage (in production, use S3/blob storage)
+# Temp storage (in production, use S3/blob storage)
 OUTPUT_DIR = tempfile.mkdtemp(prefix="scorm_output_")
+UPLOAD_DIR = tempfile.mkdtemp(prefix="scorm_uploads_")
+
+# In-memory registry: file_id → {"path": str, "filename": str, "created": float}
+staged_files: dict[str, dict] = {}
 
 
 # ─────────────────────────────────────────────
@@ -1237,6 +1241,48 @@ async def convert_presentation(
     )
 
 
+# ─────────────────────────────────────────────
+# MCP file staging (upload → file_id, download by file_id)
+# ─────────────────────────────────────────────
+
+@app.post("/api/upload", tags=["conversion"], summary="Upload a file for MCP conversion")
+async def upload_for_mcp(
+    file: Annotated[UploadFile, File(description="The .pptx or .ppt file to stage")],
+):
+    """Stage a presentation file and return a file_id.
+
+    Use this before calling the MCP convert_presentation tool.
+    The file_id is valid for 1 hour.
+    """
+    validate_upload(file)
+    file_id = hashlib.sha256(os.urandom(32)).hexdigest()[:16]
+    ext = Path(file.filename or "upload.pptx").suffix.lower()
+    dest = os.path.join(UPLOAD_DIR, f"{file_id}{ext}")
+    content = await file.read()
+    with open(dest, "wb") as f:
+        f.write(content)
+    staged_files[file_id] = {
+        "path": dest,
+        "filename": file.filename or "presentation.pptx",
+        "created": time.time(),
+    }
+    return {"file_id": file_id, "filename": file.filename, "size_bytes": len(content)}
+
+
+@app.get("/api/download/{file_id}", tags=["conversion"], summary="Download a converted file")
+async def download_converted(file_id: str):
+    """Download a converted SCORM package by file_id."""
+    info = staged_files.get(file_id)
+    if not info or not os.path.exists(info["path"]):
+        raise HTTPException(status_code=404, detail="File not found or expired.")
+    return FileResponse(
+        path=info["path"],
+        filename=info["filename"],
+        media_type="application/zip" if info["filename"].endswith(".zip") else "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{info["filename"]}"'},
+    )
+
+
 @app.get(
     "/api/info",
     tags=["health"],
@@ -1287,10 +1333,19 @@ _fastapi_app = app  # keep a ref to the raw FastAPI app
 
 async def combined_app(scope, receive, send):
     """Route requests to MCP Starlette app or FastAPI based on path."""
-    if scope["type"] == "http" and scope.get("path") in _MCP_PATHS:
-        await _mcp_app(scope, receive, send)
-    else:
-        await _fastapi_app(scope, receive, send)
+    if scope["type"] == "http":
+        path = scope.get("path", "")
+        if path in _MCP_PATHS:
+            await _mcp_app(scope, receive, send)
+            return
+        # RFC 9728: /.well-known/oauth-protected-resource/<resource-path>
+        # Claude requests /.well-known/oauth-protected-resource/mcp
+        # Rewrite to the root metadata endpoint the MCP SDK provides
+        if path.startswith("/.well-known/oauth-protected-resource/"):
+            scope = dict(scope, path="/.well-known/oauth-protected-resource")
+            await _mcp_app(scope, receive, send)
+            return
+    await _fastapi_app(scope, receive, send)
 
 
 app = combined_app  # uvicorn uses main:app

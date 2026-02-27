@@ -6,7 +6,6 @@ Usage:
     python mcp_server.py                  # stdio transport (Claude Desktop)
     python mcp_server.py --transport sse  # SSE transport (remote)
 """
-import base64
 import json
 import os
 import secrets
@@ -205,18 +204,21 @@ mcp = FastMCP(
 
 
 # ─────────────────────────────────────────────
-# Helpers
+# Shared file staging registry (populated by main.py /api/upload)
 # ─────────────────────────────────────────────
 
-def _save_upload(file_content_base64: str, filename: str) -> str:
-    """Decode base64 file content, write to a temp file, return the path."""
-    ext = os.path.splitext(filename)[1].lower() if filename else ".pptx"
-    if ext not in (".pptx", ".ppt"):
-        ext = ".pptx"
-    tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False, prefix="mcp_upload_")
-    tmp.write(base64.b64decode(file_content_base64))
-    tmp.close()
-    return tmp.name
+# Imported by main.py to register uploaded files; read by MCP tools.
+staged_files: dict[str, dict] = {}
+
+
+def _get_staged_path(file_id: str) -> tuple[str, str]:
+    """Look up a staged file by ID. Returns (path, filename) or raises."""
+    info = staged_files.get(file_id)
+    if not info or not os.path.exists(info["path"]):
+        raise FileNotFoundError(
+            f"file_id '{file_id}' not found. Upload the file first via POST /api/upload."
+        )
+    return info["path"], info["filename"]
 
 
 # ─────────────────────────────────────────────
@@ -224,64 +226,70 @@ def _save_upload(file_content_base64: str, filename: str) -> str:
 # ─────────────────────────────────────────────
 
 @mcp.tool()
-def convert_presentation(file_content_base64: str, filename: str = "presentation.pptx", course_title: str = "") -> str:
-    """Convert a PPTX/PPT file to a SCORM 2004 3rd Edition ZIP package.
+def convert_presentation(file_id: str, course_title: str = "") -> str:
+    """Convert an uploaded PPTX/PPT file to a SCORM 2004 3rd Edition ZIP package.
 
-    The file must be provided as base64-encoded content. Read the file first,
-    then pass its base64-encoded bytes here.
+    WORKFLOW:
+    1. First upload the file via POST {server_url}/api/upload → returns a file_id
+    2. Then call this tool with the file_id
+    3. The result includes a download_url for the SCORM ZIP
 
     Args:
-        file_content_base64: Base64-encoded content of the .pptx or .ppt file.
-        filename: Original filename (used for title fallback). Default: presentation.pptx
+        file_id: The file_id returned by POST /api/upload.
         course_title: Optional override for the course title.
 
     Returns:
-        Base64-encoded SCORM ZIP file content that can be saved to disk.
+        JSON with download_url, filename, and slide_count.
     """
     try:
-        pptx_path = _save_upload(file_content_base64, filename)
-    except Exception as e:
-        return f"Error: Invalid base64 content: {e}"
+        pptx_path, original_name = _get_staged_path(file_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e)})
 
     output_dir = tempfile.mkdtemp(prefix="scorm_")
     title = course_title if course_title else None
 
     try:
         zip_path = converter.convert_pptx_to_scorm(pptx_path, output_dir, title)
-
-        with open(zip_path, "rb") as f:
-            zip_b64 = base64.b64encode(f.read()).decode("ascii")
-
-        # Suggest a filename for saving
         zip_name = os.path.basename(zip_path)
+        zip_size = os.path.getsize(zip_path)
+
+        # Stage the result for download
+        import hashlib
+        result_id = hashlib.sha256(os.urandom(32)).hexdigest()[:16]
+        staged_files[result_id] = {
+            "path": zip_path,
+            "filename": zip_name,
+            "created": time.time(),
+        }
+
+        download_url = f"{SERVER_URL}/api/download/{result_id}"
         return json.dumps({
             "filename": zip_name,
-            "content_base64": zip_b64,
-            "message": f"SCORM package '{zip_name}' created. Save the content_base64 field as a .zip file.",
+            "download_url": download_url,
+            "file_size_bytes": zip_size,
+            "message": f"SCORM package ready. Download: {download_url}",
         })
     except Exception as e:
-        return f"Error during conversion: {e}"
-    finally:
-        os.unlink(pptx_path)
+        return json.dumps({"error": f"Conversion failed: {e}"})
 
 
 @mcp.tool()
-def get_presentation_info(file_content_base64: str, filename: str = "presentation.pptx") -> str:
-    """Get metadata from a PPTX file without converting it.
+def get_presentation_info(file_id: str) -> str:
+    """Get metadata from an uploaded PPTX file without converting it.
 
-    The file must be provided as base64-encoded content.
+    Upload the file first via POST {server_url}/api/upload, then call this with the file_id.
 
     Args:
-        file_content_base64: Base64-encoded content of the .pptx or .ppt file.
-        filename: Original filename. Default: presentation.pptx
+        file_id: The file_id returned by POST /api/upload.
 
     Returns:
-        JSON string with title, slide_count, and slide_titles.
+        JSON with title, slide_count, and slide_titles.
     """
     try:
-        pptx_path = _save_upload(file_content_base64, filename)
-    except Exception as e:
-        return json.dumps({"error": f"Invalid base64 content: {e}"})
+        pptx_path, _ = _get_staged_path(file_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e)})
 
     try:
         title = converter._get_presentation_title(pptx_path)
@@ -293,8 +301,6 @@ def get_presentation_info(file_content_base64: str, filename: str = "presentatio
         })
     except Exception as e:
         return json.dumps({"error": str(e)})
-    finally:
-        os.unlink(pptx_path)
 
 
 if __name__ == "__main__":
