@@ -459,11 +459,12 @@ def _build_manifest(course_id: str, title: str, image_files: list[str]) -> str:
 # Vue 3 SCORM Player (index.html)
 # ─────────────────────────────────────────────
 
-def _build_player_html(title: str, slide_titles: list[str], slide_html_list: list[str], slide_counts: list[int] = None) -> str:
+def _build_player_html(title: str, slide_titles: list[str], slide_html_list: list[str], slide_counts: list[int] = None, display_mode: str = "paginated", sidebar_flags: list[bool] = None) -> str:
     counts = slide_counts or [1] * len(slide_html_list)
+    show_flags = sidebar_flags or [True] * len(slide_html_list)
     slides_json = json.dumps([
-        {"content": h, "title": t, "slideCount": c}
-        for h, t, c in zip(slide_html_list, slide_titles, counts)
+        {"content": h, "title": t, "slideCount": c, "showInSidebar": s}
+        for h, t, c, s in zip(slide_html_list, slide_titles, counts, show_flags)
     ])
 
     return f"""<!DOCTYPE html>
@@ -868,6 +869,31 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
     .sidebar::-webkit-scrollbar {{ width: 4px; }}
     .sidebar::-webkit-scrollbar-track {{ background: transparent; }}
     .sidebar::-webkit-scrollbar-thumb {{ background: #334155; border-radius: 2px; }}
+
+    /* ── Continuous scroll mode ── */
+    .viewer.continuous {{
+      align-items: center;
+    }}
+    .viewer.continuous .continuous-slide {{
+      margin-bottom: 24px;
+    }}
+    .continue-section {{
+      text-align: center;
+      padding: 32px 0 48px;
+      flex-shrink: 0;
+      width: 100%;
+      max-width: 960px;
+    }}
+    .btn-continue {{
+      padding: 14px 40px;
+      font-size: 16px;
+    }}
+    .complete-inline {{
+      font-size: 20px;
+      font-weight: 700;
+      color: #22c55e;
+      padding: 16px 0;
+    }}
   </style>
 </head>
 <body>
@@ -896,16 +922,17 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
         <div class="sidebar-label">Slides</div>
       </div>
       <div v-for="(slide, i) in slides" :key="i"
+           v-show="slide.showInSidebar"
            class="slide-thumb"
-           :class="{{active: current === i, visited: visited.has(i)}}"
+           :class="{{active: isActiveGroup(i), visited: visited.has(i)}}"
            @click="goTo(i)">
-        <div class="thumb-num">{{{{i + 1}}}}</div>
+        <div class="thumb-num">{{{{sidebarNumber(i)}}}}</div>
         <div class="thumb-title">{{{{slide.title}}}}</div>
       </div>
     </div>
 
-    <!-- Viewer -->
-    <div class="viewer">
+    <!-- Paginated viewer -->
+    <div v-if="displayMode === 'paginated'" class="viewer">
       <div class="slide-container">
         <div class="slide-html-content" v-html="slides[current].content"></div>
 
@@ -930,14 +957,29 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
         </button>
       </div>
     </div>
+
+    <!-- Continuous scroll viewer -->
+    <div v-else class="viewer continuous" ref="scrollViewer">
+      <div v-for="(slide, i) in slides" :key="i"
+           :id="'slide-' + i"
+           class="slide-container continuous-slide">
+        <div class="slide-html-content" v-html="slide.content"></div>
+      </div>
+      <div class="continue-section">
+        <button v-if="!completed" class="btn btn-primary btn-continue"
+                @click="completeCourse">Continue</button>
+        <div v-else class="complete-inline">🎉 Course Complete!</div>
+      </div>
+    </div>
   </div>
 </div>
 
 <script src="scorm.js"></script>
 <script>
-const {{ createApp, ref, computed, onMounted, onBeforeUnmount }} = Vue;
+const {{ createApp, ref, computed, onMounted, onBeforeUnmount, nextTick }} = Vue;
 
 const SLIDES = {slides_json};
+const DISPLAY_MODE = '{display_mode}';
 
 createApp({{
   setup() {{
@@ -947,6 +989,8 @@ createApp({{
     const showComplete = ref(false);
     const completed = ref(false);
     const sidebarOpen = ref(true);
+    const displayMode = ref(DISPLAY_MODE);
+    const scrollViewer = ref(null);
 
     const totalSlides = slides.value.reduce((sum, s) => sum + s.slideCount, 0);
     const progressPct = computed(() => {{
@@ -984,6 +1028,10 @@ createApp({{
       current.value = idx;
       markVisited(idx);
       showComplete.value = false;
+      if (displayMode.value === 'continuous') {{
+        const el = document.getElementById('slide-' + idx);
+        if (el) el.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+      }}
     }}
 
     function next() {{
@@ -1012,6 +1060,44 @@ createApp({{
       window.close();
     }}
 
+    function completeCourse() {{
+      // Mark all slides as visited
+      for (let i = 0; i < slides.value.length; i++) {{
+        visited.value.add(i);
+      }}
+      const measure = 1;
+      SCORM.setProgress(measure);
+      if (!completed.value) {{
+        completed.value = true;
+        SCORM.complete();
+      }}
+      saveBookmark();
+    }}
+
+    function sidebarNumber(idx) {{
+      // Count only slides with showInSidebar up to and including idx
+      let n = 0;
+      for (let i = 0; i <= idx; i++) {{
+        if (slides.value[i].showInSidebar) n++;
+      }}
+      return n;
+    }}
+
+    function isActiveGroup(idx) {{
+      // In paginated mode or if this slide is current, simple match
+      if (current.value === idx) return true;
+      if (displayMode.value !== 'continuous') return false;
+      // In continuous mode, highlight this sidebar item if current slide
+      // falls between this item and the next sidebar item
+      if (!slides.value[idx].showInSidebar) return false;
+      // Find next sidebar-visible slide after idx
+      let nextVisible = slides.value.length;
+      for (let i = idx + 1; i < slides.value.length; i++) {{
+        if (slides.value[i].showInSidebar) {{ nextVisible = i; break; }}
+      }}
+      return current.value >= idx && current.value < nextVisible;
+    }}
+
     onMounted(() => {{
       SCORM.init();
 
@@ -1035,6 +1121,30 @@ createApp({{
 
       // Update progress from restored visited set
       markVisited(current.value);
+
+      // Continuous mode: set up IntersectionObserver to track visible slides
+      if (displayMode.value === 'continuous') {{
+        nextTick(() => {{
+          const observer = new IntersectionObserver((entries) => {{
+            entries.forEach(entry => {{
+              if (entry.isIntersecting) {{
+                const idx = parseInt(entry.target.id.replace('slide-', ''), 10);
+                if (!isNaN(idx)) {{
+                  current.value = idx;
+                  markVisited(idx);
+                }}
+              }}
+            }});
+          }}, {{
+            root: scrollViewer.value,
+            threshold: 0.3,
+          }});
+          slides.value.forEach((_, i) => {{
+            const el = document.getElementById('slide-' + i);
+            if (el) observer.observe(el);
+          }});
+        }});
+      }}
     }});
 
     onBeforeUnmount(() => {{
@@ -1044,7 +1154,9 @@ createApp({{
     window.addEventListener('beforeunload', () => SCORM.terminate());
 
     return {{ slides, current, visited, progressPct, showComplete, completed,
-              sidebarOpen, totalSlides, goTo, next, prev, restart, closeCourse }};
+              sidebarOpen, totalSlides, displayMode, scrollViewer,
+              goTo, next, prev, restart, closeCourse, completeCourse,
+              sidebarNumber, isActiveGroup }};
   }}
 }}).mount('#app');
 </script>
@@ -1183,6 +1295,7 @@ def convert_pptx_to_scorm(
     pptx_path: str,
     output_dir: str,
     course_title: Optional[str] = None,
+    display_mode: str = "paginated",
 ) -> str:
     """
     Convert a PPTX/PPT file to a SCORM 2004 ZIP package.
@@ -1191,6 +1304,7 @@ def convert_pptx_to_scorm(
         pptx_path: Absolute path to the .pptx/.ppt file
         output_dir: Directory where the ZIP will be written
         course_title: Override the course title (uses file metadata if None)
+        display_mode: 'paginated' (one slide at a time) or 'continuous' (scrollable)
 
     Returns:
         Path to the generated .zip file
@@ -1219,19 +1333,34 @@ def convert_pptx_to_scorm(
             has_title_flags.append(False)
 
         # 2b. Group slides: merge headless slides into previous headed group
-        grouped = []
-        for i, (s_html, s_title, has_t) in enumerate(
-            zip(slide_html_list, slide_titles, has_title_flags)
-        ):
-            if has_t or not grouped:
-                grouped.append({"title": s_title, "content": s_html, "count": 1})
-            else:
-                grouped[-1]["content"] += s_html
-                grouped[-1]["count"] += 1
+        # (only in paginated mode — continuous mode needs individual slides for scroll tracking)
+        if display_mode == "paginated":
+            grouped = []
+            for i, (s_html, s_title, has_t) in enumerate(
+                zip(slide_html_list, slide_titles, has_title_flags)
+            ):
+                if has_t or not grouped:
+                    grouped.append({"title": s_title, "content": s_html, "count": 1})
+                else:
+                    grouped[-1]["content"] += s_html
+                    grouped[-1]["count"] += 1
 
-        slide_titles = [g["title"] for g in grouped]
-        slide_html_list = [g["content"] for g in grouped]
-        slide_counts = [g["count"] for g in grouped]
+            slide_titles = [g["title"] for g in grouped]
+            slide_html_list = [g["content"] for g in grouped]
+            slide_counts = [g["count"] for g in grouped]
+        else:
+            slide_counts = [1] * len(slide_html_list)
+
+        # Build per-slide showInSidebar flags
+        # Paginated: all groups show (headless slides already merged)
+        # Continuous: only slides with real titles show in sidebar
+        if display_mode == "paginated":
+            sidebar_flags = [True] * len(slide_html_list)
+        else:
+            sidebar_flags = list(has_title_flags[:len(slide_html_list)])
+            # First slide always shows even if untitled
+            if sidebar_flags and not sidebar_flags[0]:
+                sidebar_flags[0] = True
 
         # 3. Build SCORM package directory
         pkg_dir = os.path.join(work_dir, "package")
@@ -1252,7 +1381,7 @@ def convert_pptx_to_scorm(
             f.write(manifest)
 
         # 3c. Write Vue player (index.html)
-        player_html = _build_player_html(title, slide_titles, slide_html_list, slide_counts)
+        player_html = _build_player_html(title, slide_titles, slide_html_list, slide_counts, display_mode, sidebar_flags)
         with open(os.path.join(pkg_dir, "index.html"), "w", encoding="utf-8") as f:
             f.write(player_html)
 

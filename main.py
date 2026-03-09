@@ -385,6 +385,30 @@ UPLOAD_PAGE_HTML = """<!DOCTYPE html>
     .title-input::placeholder { color: #475569; }
     .title-input:focus { border-color: #6366f1; }
 
+    .mode-selector {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+    .mode-label {
+      color: #64748b;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .mode-option {
+      color: #94a3b8;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .mode-option input[type="radio"] {
+      accent-color: #6366f1;
+    }
+
     .convert-btn {
       width: 100%;
       padding: 12px;
@@ -709,6 +733,11 @@ UPLOAD_PAGE_HTML = """<!DOCTYPE html>
         </button>
       </div>
       <input type="text" class="title-input" id="title-input" placeholder="Course title (optional — uses file metadata if blank)"/>
+      <div class="mode-selector">
+        <span class="mode-label">Display mode</span>
+        <label class="mode-option"><input type="radio" name="mode" value="paginated" checked/> Paginated</label>
+        <label class="mode-option"><input type="radio" name="mode" value="continuous"/> Continuous scroll</label>
+      </div>
       <input type="password" class="title-input" id="api-key-input" placeholder="API key (required if server has API_KEY set)"/>
       <button class="convert-btn" id="convert-btn">Convert to SCORM</button>
     </div>
@@ -1012,6 +1041,8 @@ UPLOAD_PAGE_HTML = """<!DOCTYPE html>
     var form = new FormData();
     form.append('file', file);
     if (title) form.append('title', title);
+    var mode = document.querySelector('input[name="mode"]:checked').value;
+    form.append('mode', mode);
 
     showProgress();
     xhr.send(form);
@@ -1174,6 +1205,7 @@ async def convert_presentation(
     background_tasks: BackgroundTasks,
     file: Annotated[UploadFile, File(description="The .pptx or .ppt file to convert")],
     title: Annotated[Optional[str], Form(description="Override the course title (optional)")] = None,
+    mode: Annotated[Optional[str], Form(description="Display mode: 'paginated' or 'continuous' (default: paginated)")] = "paginated",
     _auth: None = Depends(verify_auth),
 ):
     """
@@ -1213,10 +1245,12 @@ async def convert_presentation(
         tmp_path = tmp.name
 
     try:
+        display_mode = mode if mode in ("paginated", "continuous") else "paginated"
         zip_path = convert_pptx_to_scorm(
             pptx_path=tmp_path,
             output_dir=OUTPUT_DIR,
             course_title=title or None,
+            display_mode=display_mode,
         )
     except Exception as e:
         cleanup_file(tmp_path)

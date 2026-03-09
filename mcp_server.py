@@ -249,6 +249,7 @@ def convert_presentation(
     file_content_base64: str,
     filename: str = "presentation.pptx",
     course_title: str = "",
+    display_mode: str = "paginated",
 ) -> str:
     """Convert a PPTX/PPT file to a SCORM 2004 3rd Edition ZIP package.
 
@@ -258,6 +259,7 @@ def convert_presentation(
         file_content_base64: The .pptx or .ppt file content, base64-encoded.
         filename: Original filename (e.g. "My Slides.pptx"). Used for the output name.
         course_title: Optional override for the course title.
+        display_mode: 'paginated' (one slide at a time) or 'continuous' (scrollable view). Default: 'paginated'.
 
     Returns:
         JSON with download_url for the SCORM ZIP package.
@@ -271,7 +273,8 @@ def convert_presentation(
     title = course_title if course_title else None
 
     try:
-        zip_path = converter.convert_pptx_to_scorm(pptx_path, output_dir, title)
+        mode = display_mode if display_mode in ("paginated", "continuous") else "paginated"
+        zip_path = converter.convert_pptx_to_scorm(pptx_path, output_dir, title, mode)
         zip_name = os.path.basename(zip_path)
         zip_size = os.path.getsize(zip_path)
 
