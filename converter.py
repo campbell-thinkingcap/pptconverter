@@ -576,31 +576,47 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
       text-transform: uppercase;
       color: #64748b;
     }}
-    .sidebar-toggle {{
+    /* ── Hamburger menu button ── */
+    .hamburger-btn {{
       background: none;
       border: none;
-      color: #64748b;
       cursor: pointer;
-      padding: 4px 6px;
+      padding: 6px;
       border-radius: 4px;
-      font-size: 14px;
-      line-height: 1;
-      transition: color 0.15s, background 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s;
     }}
-    .sidebar-toggle:hover {{
-      color: #e2e8f0;
+    .hamburger-btn:hover {{
       background: #334155;
     }}
-    .sidebar-toggle.open-btn {{
+    .hamburger-icon {{
+      display: block;
+      width: 18px;
+      height: 2px;
+      background: #94a3b8;
+      position: relative;
+      transition: background 0.15s;
+    }}
+    .hamburger-icon::before,
+    .hamburger-icon::after {{
+      content: '';
+      display: block;
+      width: 18px;
+      height: 2px;
+      background: #94a3b8;
       position: absolute;
-      left: 8px;
-      top: 50%;
-      transform: translateY(-50%);
-      z-index: 5;
-      background: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 6px;
-      padding: 6px 8px;
+      left: 0;
+      transition: background 0.15s;
+    }}
+    .hamburger-icon::before {{ top: -6px; }}
+    .hamburger-icon::after {{ top: 6px; }}
+    .hamburger-btn:hover .hamburger-icon,
+    .hamburger-btn:hover .hamburger-icon::before,
+    .hamburger-btn:hover .hamburger-icon::after {{
+      background: #f1f5f9;
     }}
     .slide-thumb {{
       display: flex;
@@ -848,6 +864,9 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
 <div id="app">
   <!-- Header -->
   <div class="header">
+    <button class="hamburger-btn" @click="sidebarOpen = !sidebarOpen" title="Toggle slides menu">
+      <span class="hamburger-icon"></span>
+    </button>
     <span class="course-title">{title}</span>
     <div class="progress-wrap">
       <div class="progress-bar">
@@ -862,12 +881,9 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
   <!-- Body -->
   <div class="main">
     <!-- Sidebar -->
-    <button v-if="!sidebarOpen" class="sidebar-toggle open-btn"
-            @click="sidebarOpen = true" title="Show slides">&#9654;</button>
     <div class="sidebar" :class="{{collapsed: !sidebarOpen}}">
       <div class="sidebar-header">
         <div class="sidebar-label">Slides</div>
-        <button class="sidebar-toggle" @click="sidebarOpen = false" title="Hide slides">&#9664;</button>
       </div>
       <div v-for="(slide, i) in slides" :key="i"
            class="slide-thumb"

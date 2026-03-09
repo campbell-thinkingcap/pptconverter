@@ -4,7 +4,13 @@
       "Bash(git push:*)",
       "Bash(az acr build:*)",
       "Bash(az containerapp revision list:*)",
-      "Bash(az containerapp revision deactivate:*)"
+      "Bash(az containerapp revision deactivate:*)",
+      "mcp__capgpt__kb_search",
+      "mcp__capgpt__kb_instructions_get",
+      "mcp__capgpt__kb_get",
+      "WebFetch(domain:github.com)",
+      "Bash(PYTHONIOENCODING=utf-8 az acr build:*)",
+      "Bash(az acr list:*)"
     ]
   }
 }
