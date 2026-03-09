@@ -546,6 +546,7 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
       display: flex;
       flex: 1;
       min-height: 0;
+      position: relative;
     }}
 
     /* ── Sidebar ── */
@@ -555,6 +556,18 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
       border-right: 1px solid #334155;
       overflow-y: auto;
       flex-shrink: 0;
+      transition: width 0.2s ease, padding 0.2s ease;
+    }}
+    .sidebar.collapsed {{
+      width: 0;
+      overflow: hidden;
+      border-right: none;
+    }}
+    .sidebar-header {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px 4px;
     }}
     .sidebar-label {{
       font-size: 10px;
@@ -562,7 +575,32 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: #64748b;
-      padding: 12px 14px 6px;
+    }}
+    .sidebar-toggle {{
+      background: none;
+      border: none;
+      color: #64748b;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 4px;
+      font-size: 14px;
+      line-height: 1;
+      transition: color 0.15s, background 0.15s;
+    }}
+    .sidebar-toggle:hover {{
+      color: #e2e8f0;
+      background: #334155;
+    }}
+    .sidebar-toggle.open-btn {{
+      position: absolute;
+      left: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 5;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 6px 8px;
     }}
     .slide-thumb {{
       display: flex;
@@ -824,8 +862,13 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
   <!-- Body -->
   <div class="main">
     <!-- Sidebar -->
-    <div class="sidebar">
-      <div class="sidebar-label">Slides</div>
+    <button v-if="!sidebarOpen" class="sidebar-toggle open-btn"
+            @click="sidebarOpen = true" title="Show slides">&#9654;</button>
+    <div class="sidebar" :class="{{collapsed: !sidebarOpen}}">
+      <div class="sidebar-header">
+        <div class="sidebar-label">Slides</div>
+        <button class="sidebar-toggle" @click="sidebarOpen = false" title="Hide slides">&#9664;</button>
+      </div>
       <div v-for="(slide, i) in slides" :key="i"
            class="slide-thumb"
            :class="{{active: current === i, visited: visited.has(i)}}"
@@ -877,6 +920,7 @@ createApp({{
     const visited = ref(new Set([0]));
     const showComplete = ref(false);
     const completed = ref(false);
+    const sidebarOpen = ref(true);
 
     const progressPct = computed(() => {{
       const pct = Math.round((visited.value.size / slides.value.length) * 100);
@@ -966,7 +1010,7 @@ createApp({{
     window.addEventListener('beforeunload', () => SCORM.terminate());
 
     return {{ slides, current, visited, progressPct, showComplete, completed,
-              goTo, next, prev, restart, closeCourse }};
+              sidebarOpen, goTo, next, prev, restart, closeCourse }};
   }}
 }}).mount('#app');
 </script>
