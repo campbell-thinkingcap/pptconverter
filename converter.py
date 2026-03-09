@@ -906,30 +906,13 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
     .viewer.continuous .continuous-slide {{
       margin-bottom: 24px;
     }}
-    .continue-section {{
-      text-align: center;
-      padding: 32px 0 48px;
-      flex-shrink: 0;
-      width: 100%;
-      max-width: 960px;
-    }}
-    .btn-continue {{
-      padding: 14px 40px;
-      font-size: 16px;
-    }}
-    .complete-inline {{
-      font-size: 20px;
-      font-weight: 700;
-      color: #22c55e;
-      padding: 16px 0;
-    }}
   </style>
 </head>
 <body>
 <div id="app">
   <!-- Header -->
   <div class="header">
-    <button class="hamburger-btn" @click="sidebarOpen = !sidebarOpen" title="Toggle slides menu">
+    <button v-if="showSidebar" class="hamburger-btn" @click="sidebarOpen = !sidebarOpen" title="Toggle slides menu">
       <span class="hamburger-icon"></span>
     </button>
     <span class="course-title">{title}</span>
@@ -946,7 +929,7 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
   <!-- Body -->
   <div class="main">
     <!-- Sidebar -->
-    <div class="sidebar" :class="{{collapsed: !sidebarOpen}}">
+    <div v-if="showSidebar" class="sidebar" :class="{{collapsed: !sidebarOpen}}">
       <div class="sidebar-header">
         <div class="sidebar-label">Slides</div>
       </div>
@@ -994,11 +977,6 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
            class="slide-container continuous-slide">
         <div class="slide-html-content" v-html="slide.content"></div>
       </div>
-      <div class="continue-section">
-        <button v-if="!completed" class="btn btn-primary btn-continue"
-                @click="completeCourse">Continue</button>
-        <div v-else class="complete-inline">🎉 Course Complete!</div>
-      </div>
     </div>
   </div>
 </div>
@@ -1022,6 +1000,7 @@ createApp({{
     const scrollViewer = ref(null);
 
     const totalSlides = slides.value.reduce((sum, s) => sum + s.slideCount, 0);
+    const showSidebar = computed(() => slides.value.filter(s => s.showInSidebar).length > 1);
     const progressPct = computed(() => {{
       let viewedCount = 0;
       visited.value.forEach(i => {{
@@ -1087,20 +1066,6 @@ createApp({{
         window.parent.postMessage({{ type: 'scorm-close' }}, '*');
       }}
       window.close();
-    }}
-
-    function completeCourse() {{
-      // Mark all slides as visited
-      for (let i = 0; i < slides.value.length; i++) {{
-        visited.value.add(i);
-      }}
-      const measure = 1;
-      SCORM.setProgress(measure);
-      if (!completed.value) {{
-        completed.value = true;
-        SCORM.complete();
-      }}
-      saveBookmark();
     }}
 
     function sidebarNumber(idx) {{
@@ -1183,8 +1148,8 @@ createApp({{
     window.addEventListener('beforeunload', () => SCORM.terminate());
 
     return {{ slides, current, visited, progressPct, showComplete, completed,
-              sidebarOpen, totalSlides, displayMode, scrollViewer,
-              goTo, next, prev, restart, closeCourse, completeCourse,
+              sidebarOpen, showSidebar, totalSlides, displayMode, scrollViewer,
+              goTo, next, prev, restart, closeCourse,
               sidebarNumber, isActiveGroup }};
   }}
 }}).mount('#app');
