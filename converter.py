@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Optional
 
 from pptx import Presentation
-from pptx.util import Inches, Emu, Pt
 from pptx.enum.text import PP_ALIGN
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 
@@ -128,7 +127,17 @@ def _get_slide_background(slide) -> str:
     return "#ffffff"
 
 
-def _picture_to_html(shape, pos_style: str, images_dir: str, image_counter: list) -> str:
+def _is_title_shape(shape) -> bool:
+    """Check if a shape is a title/subtitle placeholder."""
+    if not shape.is_placeholder:
+        return False
+    try:
+        return shape.placeholder_format.idx in (0, 1, 13)
+    except Exception:
+        return False
+
+
+def _picture_to_html(shape, images_dir: str, image_counter: list) -> str:
     """Extract image from a Picture shape, save to disk, return an <img> tag."""
     image_counter[0] += 1
     try:
@@ -144,13 +153,13 @@ def _picture_to_html(shape, pos_style: str, images_dir: str, image_counter: list
 
     rel_path = f"slides/images/{filename}"
     return (
-        f'<div style="{pos_style}">'
-        f'<img src="{rel_path}" alt="" style="width:100%;height:100%;object-fit:contain;" />'
+        f'<div class="shape-image">'
+        f'<img src="{rel_path}" alt="" />'
         f'</div>'
     )
 
 
-def _table_to_html(shape, pos_style: str) -> str:
+def _table_to_html(shape) -> str:
     """Convert a Table shape to an HTML <table> element."""
     table = shape.table
     rows_html = []
@@ -187,35 +196,16 @@ def _table_to_html(shape, pos_style: str) -> str:
         rows_html.append(f'<tr>{"".join(cells_html)}</tr>')
 
     return (
-        f'<div style="{pos_style}overflow:auto;">'
-        f'<table style="width:100%;height:100%;border-collapse:collapse;font-size:11pt;">'
+        f'<div class="shape-table">'
+        f'<table style="width:100%;border-collapse:collapse;font-size:11pt;">'
         f'{"".join(rows_html)}'
         f'</table></div>'
     )
 
 
-def _text_shape_to_html(shape, pos_style: str) -> str:
-    """Convert a text-containing shape to a positioned HTML div."""
-    is_title = False
-    if shape.is_placeholder:
-        try:
-            ph_idx = shape.placeholder_format.idx
-            is_title = ph_idx in (0, 1, 13)
-        except Exception:
-            pass
-
-    # Vertical alignment
-    valign_css = ""
-    try:
-        anchor = shape.text_frame.vertical_anchor
-        if anchor is not None:
-            anchor_val = int(anchor)
-            if anchor_val == 1:  # MIDDLE
-                valign_css = "display:flex;flex-direction:column;justify-content:center;"
-            elif anchor_val == 2:  # BOTTOM
-                valign_css = "display:flex;flex-direction:column;justify-content:flex-end;"
-    except Exception:
-        pass
+def _text_shape_to_html(shape) -> str:
+    """Convert a text-containing shape to a flow-layout HTML div."""
+    is_title = _is_title_shape(shape)
 
     # Shape background
     bg_css = ""
@@ -223,7 +213,7 @@ def _text_shape_to_html(shape, pos_style: str) -> str:
         fill = shape.fill
         if fill.type is not None and str(fill.type) != "BACKGROUND (6)":
             rgb = fill.fore_color.rgb
-            bg_css = f"background-color:#{rgb};"
+            bg_css = f"background-color:#{rgb};padding:12px 16px;border-radius:6px;"
     except Exception:
         pass
 
@@ -231,84 +221,58 @@ def _text_shape_to_html(shape, pos_style: str) -> str:
     if not inner.strip():
         return ""
 
-    return f'<div style="{pos_style}{valign_css}{bg_css}overflow:visible;">{inner}</div>'
+    css_class = "shape-title" if is_title else "shape-text"
+    style_attr = f' style="{bg_css}"' if bg_css else ""
+    return f'<div class="{css_class}"{style_attr}>{inner}</div>'
 
 
-def _shape_to_html(
+def _shape_to_html_flow(
     shape,
-    slide_width: int,
-    slide_height: int,
     images_dir: str,
     image_counter: list,
 ) -> str:
-    """Convert a shape to an absolutely-positioned HTML element."""
-    # Calculate position as percentages
-    left_pct = (shape.left / slide_width) * 100
-    top_pct = (shape.top / slide_height) * 100
-    width_pct = (shape.width / slide_width) * 100
-    height_pct = (shape.height / slide_height) * 100
-
-    pos_style = (
-        f"position:absolute;"
-        f"left:{left_pct:.4f}%;"
-        f"top:{top_pct:.4f}%;"
-        f"width:{width_pct:.4f}%;"
-        f"height:{height_pct:.4f}%;"
-    )
-
-    # Add rotation if present
-    if shape.rotation:
-        pos_style += f"transform:rotate({shape.rotation}deg);transform-origin:center center;"
-
+    """Convert a shape to a flow-layout HTML element (no absolute positioning)."""
     shape_type = shape.shape_type
 
-    # Picture shapes
     if shape_type == MSO_SHAPE_TYPE.PICTURE:
-        return _picture_to_html(shape, pos_style, images_dir, image_counter)
+        return _picture_to_html(shape, images_dir, image_counter)
 
-    # Table shapes
     if shape.has_table:
-        return _table_to_html(shape, pos_style)
+        return _table_to_html(shape)
 
-    # Group shapes
     if shape_type == MSO_SHAPE_TYPE.GROUP:
-        return _group_to_html(shape, pos_style, images_dir, image_counter)
+        return _group_to_html(shape, images_dir, image_counter)
 
-    # Text shapes (auto shapes, text boxes, placeholders)
     if shape.has_text_frame:
-        return _text_shape_to_html(shape, pos_style)
+        return _text_shape_to_html(shape)
 
-    return ""  # Skip unsupported shapes (charts, SmartArt, freeform, etc.)
+    return ""
 
 
-def _group_to_html(
-    shape, pos_style: str, images_dir: str, image_counter: list,
-) -> str:
-    """Recursively process a group shape."""
+def _group_to_html(shape, images_dir: str, image_counter: list) -> str:
+    """Recursively process a group shape into flow layout."""
     children_html = []
     for child in shape.shapes:
-        child_html = _shape_to_html(
-            child, shape.width, shape.height, images_dir, image_counter
-        )
+        child_html = _shape_to_html_flow(child, images_dir, image_counter)
         if child_html:
             children_html.append(child_html)
 
     if not children_html:
         return ""
 
-    return f'<div style="{pos_style}">{"".join(children_html)}</div>'
+    return f'<div class="shape-group">{"".join(children_html)}</div>'
 
 
 def _extract_slide_html(pptx_path: str, work_dir: str) -> list[str]:
     """
-    Extract each slide from the PPTX as an HTML string.
+    Extract each slide from the PPTX as an HTML string using flow layout.
+    Shapes are sorted top-to-bottom; horizontally adjacent shapes are grouped
+    into CSS grid rows with proportional column widths.
     Images are saved to work_dir/slides/images/ and referenced via relative paths.
     Returns list of HTML strings, one per slide.
     """
     prs = Presentation(pptx_path)
-    slide_width = prs.slide_width
     slide_height = prs.slide_height
-    aspect_pct = (slide_height / slide_width) * 100
 
     images_dir = os.path.join(work_dir, "slides", "images")
     os.makedirs(images_dir, exist_ok=True)
@@ -319,17 +283,84 @@ def _extract_slide_html(pptx_path: str, work_dir: str) -> list[str]:
     for slide in prs.slides:
         bg_color = _get_slide_background(slide)
 
-        shapes_html = []
+        # Collect shapes that have renderable content
+        shape_entries = []
         for shape in slide.shapes:
-            shape_html = _shape_to_html(
-                shape, slide_width, slide_height, images_dir, image_counter
+            has_content = (
+                shape.shape_type == MSO_SHAPE_TYPE.PICTURE
+                or shape.has_table
+                or shape.shape_type == MSO_SHAPE_TYPE.GROUP
+                or shape.has_text_frame
             )
-            if shape_html:
-                shapes_html.append(shape_html)
+            if not has_content:
+                continue
+            shape_entries.append({
+                "shape": shape,
+                "top": shape.top,
+                "left": shape.left,
+                "width": shape.width,
+                "is_title": _is_title_shape(shape),
+            })
+
+        # Sort by vertical position, then horizontal
+        shape_entries.sort(key=lambda e: (e["top"], e["left"]))
+
+        # Group into rows: shapes with similar top values go side-by-side
+        ROW_TOLERANCE = slide_height * 0.10
+        rows: list[list[dict]] = []
+        current_row: list[dict] = []
+
+        for entry in shape_entries:
+            # Title shapes always get their own full-width row
+            if entry["is_title"]:
+                if current_row:
+                    rows.append(current_row)
+                    current_row = []
+                rows.append([entry])
+                continue
+
+            if not current_row:
+                current_row = [entry]
+            elif abs(entry["top"] - current_row[0]["top"]) <= ROW_TOLERANCE:
+                current_row.append(entry)
+            else:
+                rows.append(current_row)
+                current_row = [entry]
+
+        if current_row:
+            rows.append(current_row)
+
+        # Render rows into HTML
+        shapes_html = []
+        for row in rows:
+            row.sort(key=lambda e: e["left"])
+
+            row_parts = []
+            for entry in row:
+                h = _shape_to_html_flow(entry["shape"], images_dir, image_counter)
+                if h:
+                    row_parts.append({"html": h, "width": entry["width"]})
+
+            if not row_parts:
+                continue
+
+            if len(row_parts) == 1:
+                shapes_html.append(row_parts[0]["html"])
+            else:
+                # CSS grid with proportional columns based on shape widths
+                fr_cols = " ".join(f"{p['width']}fr" for p in row_parts)
+                inner = "".join(
+                    f'<div>{p["html"]}</div>' for p in row_parts
+                )
+                shapes_html.append(
+                    f'<div class="slide-row" style="display:grid;'
+                    f'grid-template-columns:{fr_cols};gap:16px;align-items:start;">'
+                    f'{inner}</div>'
+                )
 
         slide_div = (
-            f'<div class="slide-content" style="position:relative;width:100%;'
-            f'padding-bottom:{aspect_pct:.4f}%;background:{bg_color};">'
+            f'<div class="slide-content" style="width:100%;'
+            f'background:{bg_color};padding:32px 40px;">'
             f'{"".join(shapes_html)}'
             f'</div>'
         )
@@ -597,32 +628,76 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
     /* ── Slide HTML content ── */
     .slide-html-content {{
       width: 100%;
-      overflow: auto;
     }}
     .slide-html-content .slide-content {{
-      position: relative;
       width: 100%;
       color: #111111;
       font-family: 'Segoe UI', Calibri, Arial, sans-serif;
+      line-height: 1.6;
     }}
-    .slide-html-content .slide-content h1 {{
-      margin: 0;
+
+    /* ── Title shapes ── */
+    .slide-html-content .shape-title {{
+      margin-bottom: 20px;
+    }}
+    .slide-html-content .shape-title h1 {{
+      font-size: 28px;
+      font-weight: 700;
       line-height: 1.2;
+      margin: 0 0 4px 0;
+      color: #1a1a2e;
     }}
-    .slide-html-content .slide-content h2 {{
+    .slide-html-content .shape-title h2 {{
+      font-size: 22px;
+      font-weight: 600;
+      line-height: 1.3;
       margin: 0;
-      line-height: 1.2;
+      color: #333;
     }}
-    .slide-html-content .slide-content p {{
-      margin: 0;
-      line-height: 1.4;
+
+    /* ── Text shapes ── */
+    .slide-html-content .shape-text {{
+      margin-bottom: 16px;
     }}
-    .slide-html-content .slide-content img {{
+    .slide-html-content .shape-text p {{
+      margin: 0 0 6px 0;
+      line-height: 1.6;
+    }}
+
+    /* ── Image shapes ── */
+    .slide-html-content .shape-image {{
+      margin: 16px 0;
+      text-align: center;
+    }}
+    .slide-html-content .shape-image img {{
       max-width: 100%;
-      display: block;
+      height: auto;
+      border-radius: 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     }}
-    .slide-html-content .slide-content table {{
+
+    /* ── Table shapes ── */
+    .slide-html-content .shape-table {{
+      margin: 16px 0;
+      overflow-x: auto;
+    }}
+    .slide-html-content .shape-table table {{
+      width: 100%;
       border-collapse: collapse;
+    }}
+
+    /* ── Group shapes ── */
+    .slide-html-content .shape-group {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }}
+
+    /* ── Grid rows (side-by-side shapes) ── */
+    .slide-html-content .slide-row {{
+      margin-bottom: 16px;
     }}
 
     /* ── Controls ── */
