@@ -381,6 +381,15 @@ def _get_slide_titles(pptx_path: str) -> list[str]:
     return titles
 
 
+def _slides_have_titles(pptx_path: str) -> list[bool]:
+    """Return a boolean per slide indicating whether it has a real title shape."""
+    prs = Presentation(pptx_path)
+    return [
+        bool(slide.shapes.title and slide.shapes.title.text.strip())
+        for slide in prs.slides
+    ]
+
+
 def _get_presentation_title(pptx_path: str) -> str:
     """Get the presentation title from core properties."""
     prs = Presentation(pptx_path)
@@ -450,10 +459,11 @@ def _build_manifest(course_id: str, title: str, image_files: list[str]) -> str:
 # Vue 3 SCORM Player (index.html)
 # ─────────────────────────────────────────────
 
-def _build_player_html(title: str, slide_titles: list[str], slide_html_list: list[str]) -> str:
+def _build_player_html(title: str, slide_titles: list[str], slide_html_list: list[str], slide_counts: list[int] = None) -> str:
+    counts = slide_counts or [1] * len(slide_html_list)
     slides_json = json.dumps([
-        {"content": h, "title": t}
-        for h, t in zip(slide_html_list, slide_titles)
+        {"content": h, "title": t, "slideCount": c}
+        for h, t, c in zip(slide_html_list, slide_titles, counts)
     ])
 
     return f"""<!DOCTYPE html>
@@ -903,7 +913,7 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
         <div v-if="showComplete" class="complete-overlay">
           <div class="complete-icon">🎉</div>
           <div class="complete-title">Course Complete!</div>
-          <div class="complete-sub">You've viewed all {{{{slides.length}}}} slides.</div>
+          <div class="complete-sub">You've viewed all {{{{totalSlides}}}} slides.</div>
           <button class="btn-restart" @click="restart">Review Again</button>
         </div>
       </div>
@@ -938,9 +948,13 @@ createApp({{
     const completed = ref(false);
     const sidebarOpen = ref(true);
 
+    const totalSlides = slides.value.reduce((sum, s) => sum + s.slideCount, 0);
     const progressPct = computed(() => {{
-      const pct = Math.round((visited.value.size / slides.value.length) * 100);
-      return pct;
+      let viewedCount = 0;
+      visited.value.forEach(i => {{
+        viewedCount += slides.value[i].slideCount;
+      }});
+      return Math.round((viewedCount / totalSlides) * 100);
     }});
 
     function saveBookmark() {{
@@ -951,11 +965,15 @@ createApp({{
 
     function markVisited(idx) {{
       visited.value.add(idx);
-      const measure = visited.value.size / slides.value.length;
+      let viewedCount = 0;
+      visited.value.forEach(i => {{
+        viewedCount += slides.value[i].slideCount;
+      }});
+      const measure = viewedCount / totalSlides;
       SCORM.setProgress(measure);
       saveBookmark();
 
-      if (visited.value.size === slides.value.length && !completed.value) {{
+      if (viewedCount === totalSlides && !completed.value) {{
         completed.value = true;
         SCORM.complete();
         showComplete.value = true;
@@ -1026,7 +1044,7 @@ createApp({{
     window.addEventListener('beforeunload', () => SCORM.terminate());
 
     return {{ slides, current, visited, progressPct, showComplete, completed,
-              sidebarOpen, goTo, next, prev, restart, closeCourse }};
+              sidebarOpen, totalSlides, goTo, next, prev, restart, closeCourse }};
   }}
 }}).mount('#app');
 </script>
@@ -1187,6 +1205,7 @@ def convert_pptx_to_scorm(
         # 1. Extract metadata
         title = course_title or _get_presentation_title(pptx_path)
         slide_titles = _get_slide_titles(pptx_path)
+        has_title_flags = _slides_have_titles(pptx_path)
 
         # 2. Extract slides as HTML
         slide_html_list = _extract_slide_html(pptx_path, work_dir)
@@ -1196,6 +1215,23 @@ def convert_pptx_to_scorm(
         # Pad slide titles if count differs
         while len(slide_titles) < len(slide_html_list):
             slide_titles.append(f"Slide {len(slide_titles) + 1}")
+        while len(has_title_flags) < len(slide_html_list):
+            has_title_flags.append(False)
+
+        # 2b. Group slides: merge headless slides into previous headed group
+        grouped = []
+        for i, (s_html, s_title, has_t) in enumerate(
+            zip(slide_html_list, slide_titles, has_title_flags)
+        ):
+            if has_t or not grouped:
+                grouped.append({"title": s_title, "content": s_html, "count": 1})
+            else:
+                grouped[-1]["content"] += s_html
+                grouped[-1]["count"] += 1
+
+        slide_titles = [g["title"] for g in grouped]
+        slide_html_list = [g["content"] for g in grouped]
+        slide_counts = [g["count"] for g in grouped]
 
         # 3. Build SCORM package directory
         pkg_dir = os.path.join(work_dir, "package")
@@ -1216,7 +1252,7 @@ def convert_pptx_to_scorm(
             f.write(manifest)
 
         # 3c. Write Vue player (index.html)
-        player_html = _build_player_html(title, slide_titles, slide_html_list)
+        player_html = _build_player_html(title, slide_titles, slide_html_list, slide_counts)
         with open(os.path.join(pkg_dir, "index.html"), "w", encoding="utf-8") as f:
             f.write(player_html)
 
