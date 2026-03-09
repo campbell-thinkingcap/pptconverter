@@ -459,7 +459,7 @@ def _build_manifest(course_id: str, title: str, image_files: list[str]) -> str:
 # Vue 3 SCORM Player (index.html)
 # ─────────────────────────────────────────────
 
-def _build_player_html(title: str, slide_titles: list[str], slide_html_list: list[str], slide_counts: list[int] = None, display_mode: str = "paginated", sidebar_flags: list[bool] = None) -> str:
+def _build_player_html(title: str, slide_titles: list[str], slide_html_list: list[str], slide_counts: list[int] = None, display_mode: str = "paginated", sidebar_flags: list[bool] = None, theme: str = "light") -> str:
     counts = slide_counts or [1] * len(slide_html_list)
     show_flags = sidebar_flags or [True] * len(slide_html_list)
     slides_json = json.dumps([
@@ -468,7 +468,7 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
     ])
 
     return f"""<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="{theme}">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -477,6 +477,35 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
   <style>
     *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
+    [data-theme="light"] {{
+      --bg-body: #f8fafc;
+      --bg-surface: #ffffff;
+      --bg-hover: #f1f5f9;
+      --bg-active: #eff6ff;
+      --border: #e2e8f0;
+      --text-primary: #0f172a;
+      --text-secondary: #1e293b;
+      --text-muted: #475569;
+      --text-dim: #64748b;
+      --text-placeholder: #94a3b8;
+      --shadow: rgba(0,0,0,0.08);
+      --overlay-bg: rgba(248,250,252,0.9);
+    }}
+    [data-theme="dark"] {{
+      --bg-body: #0f172a;
+      --bg-surface: #1e293b;
+      --bg-hover: #263548;
+      --bg-active: #1d3a5e;
+      --border: #334155;
+      --text-primary: #f1f5f9;
+      --text-secondary: #e2e8f0;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --text-placeholder: #475569;
+      --shadow: rgba(0,0,0,0.5);
+      --overlay-bg: rgba(15,23,42,0.85);
+    }}
+
     html, body {{
       height: 100%;
       overflow: hidden;
@@ -484,8 +513,8 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
 
     body {{
       font-family: 'Segoe UI', system-ui, sans-serif;
-      background: #0f172a;
-      color: #e2e8f0;
+      background: var(--bg-body);
+      color: var(--text-secondary);
       display: flex;
       flex-direction: column;
     }}
@@ -499,8 +528,8 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
 
     /* ── Header ── */
     .header {{
-      background: #1e293b;
-      border-bottom: 1px solid #334155;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
       padding: 10px 20px;
       display: flex;
       align-items: center;
@@ -511,7 +540,7 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
     .course-title {{
       font-size: 15px;
       font-weight: 600;
-      color: #f1f5f9;
+      color: var(--text-primary);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -527,7 +556,7 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
     .progress-bar {{
       flex: 1;
       height: 6px;
-      background: #334155;
+      background: var(--border);
       border-radius: 3px;
       overflow: hidden;
     }}
@@ -539,7 +568,7 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
     }}
     .progress-label {{
       font-size: 12px;
-      color: #94a3b8;
+      color: var(--text-muted);
       white-space: nowrap;
     }}
     .completion-badge {{
@@ -563,8 +592,8 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
     /* ── Sidebar ── */
     .sidebar {{
       width: 220px;
-      background: #1e293b;
-      border-right: 1px solid #334155;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border);
       overflow-y: auto;
       flex-shrink: 0;
       transition: width 0.2s ease, padding 0.2s ease;
@@ -585,7 +614,7 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
       font-weight: 700;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: #64748b;
+      color: var(--text-dim);
     }}
     /* ── Hamburger menu button ── */
     .hamburger-btn {{
@@ -601,13 +630,13 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
       transition: background 0.15s;
     }}
     .hamburger-btn:hover {{
-      background: #334155;
+      background: var(--border);
     }}
     .hamburger-icon {{
       display: block;
       width: 18px;
       height: 2px;
-      background: #94a3b8;
+      background: var(--text-muted);
       position: relative;
       transition: background 0.15s;
     }}
@@ -617,7 +646,7 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
       display: block;
       width: 18px;
       height: 2px;
-      background: #94a3b8;
+      background: var(--text-muted);
       position: absolute;
       left: 0;
       transition: background 0.15s;
@@ -627,7 +656,7 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
     .hamburger-btn:hover .hamburger-icon,
     .hamburger-btn:hover .hamburger-icon::before,
     .hamburger-btn:hover .hamburger-icon::after {{
-      background: #f1f5f9;
+      background: var(--text-primary);
     }}
     .slide-thumb {{
       display: flex;
@@ -638,9 +667,9 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
       border-left: 3px solid transparent;
       transition: background 0.15s, border-color 0.15s;
     }}
-    .slide-thumb:hover {{ background: #263548; }}
+    .slide-thumb:hover {{ background: var(--bg-hover); }}
     .slide-thumb.active {{
-      background: #1d3a5e;
+      background: var(--bg-active);
       border-left-color: #6366f1;
     }}
     .slide-thumb.visited .thumb-num {{
@@ -651,7 +680,7 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
       width: 26px;
       height: 26px;
       border-radius: 50%;
-      background: #334155;
+      background: var(--border);
       font-size: 11px;
       font-weight: 700;
       display: flex;
@@ -662,12 +691,12 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
     }}
     .thumb-title {{
       font-size: 12px;
-      color: #94a3b8;
+      color: var(--text-muted);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }}
-    .slide-thumb.active .thumb-title {{ color: #e2e8f0; }}
+    .slide-thumb.active .thumb-title {{ color: var(--text-secondary); }}
 
     /* ── Slide viewer ── */
     .viewer {{
@@ -685,7 +714,7 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
       max-width: 960px;
       background: #fff;
       border-radius: 8px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      box-shadow: 0 20px 60px var(--shadow);
       overflow: visible;
       flex-shrink: 0;
     }}
@@ -795,15 +824,15 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
     }}
     .btn-primary:not(:disabled):hover {{ background: #4f46e5; }}
     .btn-ghost {{
-      background: #1e293b;
-      color: #94a3b8;
-      border: 1px solid #334155;
+      background: var(--bg-surface);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
     }}
-    .btn-ghost:not(:disabled):hover {{ background: #263548; color: #e2e8f0; }}
+    .btn-ghost:not(:disabled):hover {{ background: var(--bg-hover); color: var(--text-secondary); }}
 
     .slide-counter {{
       font-size: 13px;
-      color: #64748b;
+      color: var(--text-dim);
       min-width: 90px;
       text-align: center;
     }}
@@ -812,7 +841,7 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
     .complete-overlay {{
       position: absolute;
       inset: 0;
-      background: rgba(15,23,42,0.85);
+      background: var(--overlay-bg);
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -832,7 +861,7 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
     }}
     .complete-sub {{
       font-size: 14px;
-      color: #94a3b8;
+      color: var(--text-muted);
     }}
     .btn-restart {{
       margin-top: 8px;
@@ -851,7 +880,7 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
     .btn-close {{
       background: transparent;
       border: none;
-      color: #94a3b8;
+      color: var(--text-muted);
       font-size: 18px;
       cursor: pointer;
       padding: 4px 8px;
@@ -861,14 +890,14 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
       transition: color 0.15s, background 0.15s;
     }}
     .btn-close:hover {{
-      color: #f1f5f9;
-      background: #334155;
+      color: var(--text-primary);
+      background: var(--border);
     }}
 
     /* Scrollbar */
     .sidebar::-webkit-scrollbar {{ width: 4px; }}
     .sidebar::-webkit-scrollbar-track {{ background: transparent; }}
-    .sidebar::-webkit-scrollbar-thumb {{ background: #334155; border-radius: 2px; }}
+    .sidebar::-webkit-scrollbar-thumb {{ background: var(--border); border-radius: 2px; }}
 
     /* ── Continuous scroll mode ── */
     .viewer.continuous {{
@@ -1296,6 +1325,7 @@ def convert_pptx_to_scorm(
     output_dir: str,
     course_title: Optional[str] = None,
     display_mode: str = "paginated",
+    theme: str = "light",
 ) -> str:
     """
     Convert a PPTX/PPT file to a SCORM 2004 ZIP package.
@@ -1305,6 +1335,7 @@ def convert_pptx_to_scorm(
         output_dir: Directory where the ZIP will be written
         course_title: Override the course title (uses file metadata if None)
         display_mode: 'paginated' (one slide at a time) or 'continuous' (scrollable)
+        theme: 'light' or 'dark' color scheme for the player
 
     Returns:
         Path to the generated .zip file
@@ -1381,7 +1412,7 @@ def convert_pptx_to_scorm(
             f.write(manifest)
 
         # 3c. Write Vue player (index.html)
-        player_html = _build_player_html(title, slide_titles, slide_html_list, slide_counts, display_mode, sidebar_flags)
+        player_html = _build_player_html(title, slide_titles, slide_html_list, slide_counts, display_mode, sidebar_flags, theme)
         with open(os.path.join(pkg_dir, "index.html"), "w", encoding="utf-8") as f:
             f.write(player_html)
 

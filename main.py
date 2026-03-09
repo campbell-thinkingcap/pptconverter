@@ -738,6 +738,11 @@ UPLOAD_PAGE_HTML = """<!DOCTYPE html>
         <label class="mode-option"><input type="radio" name="mode" value="paginated" checked/> Paginated</label>
         <label class="mode-option"><input type="radio" name="mode" value="continuous"/> Continuous scroll</label>
       </div>
+      <div class="mode-selector">
+        <span class="mode-label">Theme</span>
+        <label class="mode-option"><input type="radio" name="theme" value="light" checked/> Light</label>
+        <label class="mode-option"><input type="radio" name="theme" value="dark"/> Dark</label>
+      </div>
       <input type="password" class="title-input" id="api-key-input" placeholder="API key (required if server has API_KEY set)"/>
       <button class="convert-btn" id="convert-btn">Convert to SCORM</button>
     </div>
@@ -1043,6 +1048,8 @@ UPLOAD_PAGE_HTML = """<!DOCTYPE html>
     if (title) form.append('title', title);
     var mode = document.querySelector('input[name="mode"]:checked').value;
     form.append('mode', mode);
+    var theme = document.querySelector('input[name="theme"]:checked').value;
+    form.append('theme', theme);
 
     showProgress();
     xhr.send(form);
@@ -1206,6 +1213,7 @@ async def convert_presentation(
     file: Annotated[UploadFile, File(description="The .pptx or .ppt file to convert")],
     title: Annotated[Optional[str], Form(description="Override the course title (optional)")] = None,
     mode: Annotated[Optional[str], Form(description="Display mode: 'paginated' or 'continuous' (default: paginated)")] = "paginated",
+    theme: Annotated[Optional[str], Form(description="Theme: 'light' or 'dark' (default: light)")] = "light",
     _auth: None = Depends(verify_auth),
 ):
     """
@@ -1246,11 +1254,13 @@ async def convert_presentation(
 
     try:
         display_mode = mode if mode in ("paginated", "continuous") else "paginated"
+        selected_theme = theme if theme in ("light", "dark") else "light"
         zip_path = convert_pptx_to_scorm(
             pptx_path=tmp_path,
             output_dir=OUTPUT_DIR,
             course_title=title or None,
             display_mode=display_mode,
+            theme=selected_theme,
         )
     except Exception as e:
         cleanup_file(tmp_path)
