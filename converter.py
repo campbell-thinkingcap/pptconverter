@@ -7,6 +7,7 @@ import os
 import re
 import json
 import shutil
+import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
@@ -16,6 +17,27 @@ from pptx import Presentation
 from pptx.util import Inches, Emu, Pt
 from pptx.enum.text import PP_ALIGN
 from pptx.enum.shapes import MSO_SHAPE_TYPE
+
+
+# ─────────────────────────────────────────────
+# .ppt → .pptx conversion (LibreOffice)
+# ─────────────────────────────────────────────
+
+def _convert_ppt_to_pptx(ppt_path: str) -> str:
+    """Convert a .ppt file to .pptx using LibreOffice headless. Returns path to .pptx."""
+    out_dir = tempfile.mkdtemp(prefix="ppt_convert_")
+    result = subprocess.run(
+        ["libreoffice", "--headless", "--convert-to", "pptx", "--outdir", out_dir, ppt_path],
+        capture_output=True, text=True, timeout=120,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"LibreOffice conversion failed: {result.stderr.strip()}")
+
+    pptx_name = Path(ppt_path).stem + ".pptx"
+    pptx_path = os.path.join(out_dir, pptx_name)
+    if not os.path.exists(pptx_path):
+        raise RuntimeError(f"LibreOffice did not produce expected output: {pptx_name}")
+    return pptx_path
 
 
 # ─────────────────────────────────────────────
@@ -1021,6 +1043,12 @@ def convert_pptx_to_scorm(
         Path to the generated .zip file
     """
     with tempfile.TemporaryDirectory() as work_dir:
+        # 0. Convert .ppt to .pptx if needed (python-pptx only reads .pptx)
+        converted_pptx = None
+        if pptx_path.lower().endswith(".ppt"):
+            pptx_path = _convert_ppt_to_pptx(pptx_path)
+            converted_pptx = pptx_path  # track for cleanup
+
         # 1. Extract metadata
         title = course_title or _get_presentation_title(pptx_path)
         slide_titles = _get_slide_titles(pptx_path)
@@ -1072,5 +1100,9 @@ def convert_pptx_to_scorm(
                     abs_path = os.path.join(root, file)
                     arcname = os.path.relpath(abs_path, pkg_dir)
                     zf.write(abs_path, arcname)
+
+        # Clean up temp .pptx from .ppt conversion
+        if converted_pptx:
+            shutil.rmtree(os.path.dirname(converted_pptx), ignore_errors=True)
 
         return zip_path
