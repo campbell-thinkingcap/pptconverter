@@ -80,11 +80,11 @@ async def verify_auth(
         _verify_google_token(google_token)
         return
 
-    if has_api_key and not has_oauth:
+    # No credentials provided — require auth only when API_KEY is configured.
+    # When only Google OAuth is set, API calls without a token pass through
+    # (Google sign-in is enforced by the browser UI, not the API).
+    if has_api_key:
         raise HTTPException(status_code=401, detail="Invalid or missing API key.")
-    if has_oauth and not has_api_key:
-        raise HTTPException(status_code=401, detail="Google sign-in required.")
-    raise HTTPException(status_code=401, detail="Authentication required.")
 
 # ─────────────────────────────────────────────
 # MCP Session Manager + App Lifespan
