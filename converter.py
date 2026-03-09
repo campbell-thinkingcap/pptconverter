@@ -1025,7 +1025,7 @@ createApp({{
       SCORM.setProgress(measure);
       saveBookmark();
 
-      if (viewedCount === totalSlides && !completed.value) {{
+      if (viewedCount === totalSlides && !completed.value && displayMode.value !== 'continuous') {{
         completed.value = true;
         SCORM.complete();
         showComplete.value = true;
@@ -1116,9 +1116,14 @@ createApp({{
       // Update progress from restored visited set
       markVisited(current.value);
 
-      // Continuous mode: set up IntersectionObserver to track visible slides
+      // Continuous mode: track scroll position for progress and completion
       if (displayMode.value === 'continuous') {{
         nextTick(() => {{
+          const viewer = scrollViewer.value;
+          if (!viewer) return;
+
+          // Don't observe slides until first scroll — prevents auto-marking on load
+          let observerStarted = false;
           const observer = new IntersectionObserver((entries) => {{
             entries.forEach(entry => {{
               if (entry.isIntersecting) {{
@@ -1130,12 +1135,31 @@ createApp({{
               }}
             }});
           }}, {{
-            root: scrollViewer.value,
+            root: viewer,
             threshold: 0.3,
           }});
-          slides.value.forEach((_, i) => {{
-            const el = document.getElementById('slide-' + i);
-            if (el) observer.observe(el);
+
+          const startObserving = () => {{
+            if (observerStarted) return;
+            observerStarted = true;
+            slides.value.forEach((_, i) => {{
+              const el = document.getElementById('slide-' + i);
+              if (el) observer.observe(el);
+            }});
+          }};
+
+          viewer.addEventListener('scroll', () => {{
+            startObserving();
+            // Complete when scrolled to the bottom
+            if (!completed.value && viewer.scrollTop + viewer.clientHeight >= viewer.scrollHeight - 20) {{
+              for (let i = 0; i < slides.value.length; i++) {{
+                visited.value.add(i);
+              }}
+              SCORM.setProgress(1);
+              completed.value = true;
+              SCORM.complete();
+              saveBookmark();
+            }}
           }});
         }});
       }}
