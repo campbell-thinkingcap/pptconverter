@@ -69,7 +69,7 @@ def _extract_slide_svgs(pptx_path: str, work_dir: str) -> list[str]:
     # 3. PDF → SVG per page via pdftocairo
     slide_content_list = []
     for page in range(1, num_slides + 1):
-        svg_name = f"slide-{page:02d}"
+        svg_name = f"slide-{page:02d}.svg"
         svg_path = os.path.join(slides_dir, svg_name)
         result = subprocess.run(
             ["pdftocairo", "-svg", "-f", str(page), "-l", str(page), pdf_path, svg_path],
@@ -78,8 +78,7 @@ def _extract_slide_svgs(pptx_path: str, work_dir: str) -> list[str]:
         if result.returncode != 0:
             raise RuntimeError(f"pdftocairo failed on page {page}: {result.stderr.strip()}")
 
-        # pdftocairo appends .svg to the output name
-        rel_path = f"slides/{svg_name}.svg"
+        rel_path = f"slides/{svg_name}"
         slide_content_list.append(
             f'<img src="{rel_path}" class="slide-svg-img" alt="Slide {page}" />'
         )
