@@ -10,7 +10,11 @@
       "mcp__capgpt__kb_get",
       "WebFetch(domain:github.com)",
       "Bash(PYTHONIOENCODING=utf-8 az acr build:*)",
-      "Bash(az acr list:*)"
+      "Bash(az acr list:*)",
+      "Bash(pip install:*)",
+      "Bash(ls:*)",
+      "Bash(where:*)",
+      "Read(//c/Program Files/**)"
     ]
   }
 }

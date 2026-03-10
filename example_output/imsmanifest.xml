@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest identifier="WELCOME_TO_TC"
+  xmlns="http://www.imsglobal.org/xsd/imscp_v1p1"
+  xmlns:adlcp="http://www.adlnet.org/xsd/adlcp_v1p3"
+  xmlns:adlseq="http://www.adlnet.org/xsd/adlseq_v1p3"
+  xmlns:adlnav="http://www.adlnet.org/xsd/adlnav_v1p3"
+  xmlns:imsss="http://www.imsglobal.org/xsd/imsss"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.imsglobal.org/xsd/imscp_v1p1 imscp_v1p1.xsd
+    http://www.adlnet.org/xsd/adlcp_v1p3 adlcp_v1p3.xsd
+    http://www.adlnet.org/xsd/adlseq_v1p3 adlseq_v1p3.xsd
+    http://www.adlnet.org/xsd/adlnav_v1p3 adlnav_v1p3.xsd
+    http://www.imsglobal.org/xsd/imsss imsss_v1p0.xsd">
+
+  <metadata>
+    <schema>ADL SCORM</schema>
+    <schemaversion>2004 3rd Edition</schemaversion>
+  </metadata>
+
+  <organizations default="ORG-WELCOME_TO_TC">
+    <organization identifier="ORG-WELCOME_TO_TC">
+      <title>Welcome to TC</title>
+      <item identifier="ITEM-WELCOME_TO_TC" identifierref="RES-WELCOME_TO_TC">
+        <title>Welcome to TC</title>
+        <adlcp:completionThreshold minProgressMeasure="1.0" completedByMeasure="true"/>
+        <imsss:sequencing>
+          <imsss:deliveryControls completionSetByContent="true" objectiveSetByContent="true"/>
+        </imsss:sequencing>
+      </item>
+    </organization>
+  </organizations>
+
+  <resources>
+    <resource identifier="RES-WELCOME_TO_TC" type="webcontent"
+      adlcp:scormType="sco" href="index.html">
+      <file href="index.html"/>
+      <file href="scorm.js"/>
+      <file href="slides/images/img-001.png"/>
+      <file href="slides/images/img-002.png"/>
+      <file href="slides/images/img-003.png"/>
+      <file href="slides/images/img-004.png"/>
+      <file href="slides/images/img-005.png"/>
+      <file href="slides/images/img-006.png"/>
+      <file href="slides/images/img-007.gif"/>
+      <file href="slides/images/img-008.png"/>
+      <file href="slides/images/img-009.png"/>
+      <file href="slides/images/img-010.png"/>
+      <file href="slides/images/img-011.png"/>
+      <file href="slides/images/img-012.png"/>
+      <file href="slides/images/img-013.png"/>
+      <file href="slides/images/img-014.png"/>
+      <file href="slides/images/img-015.png"/>
+      <file href="slides/images/img-016.png"/>
+      <file href="slides/images/img-017.png"/>
+      <file href="slides/images/img-018.png"/>
+      <file href="slides/images/img-019.png"/>
+      <file href="slides/images/img-020.png"/>
+      <file href="slides/images/img-021.gif"/>
+      <file href="slides/images/img-022.png"/>
+      <file href="slides/images/img-023.png"/>
+      <file href="slides/images/img-024.png"/>
+      <file href="slides/images/img-025.png"/>
+      
+    </resource>
+  </resources>
+</manifest>

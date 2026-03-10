@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Welcome to TC</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    [data-theme="light"] {
+      --bg-body: #f8fafc;
+      --bg-surface: #ffffff;
+      --bg-hover: #f1f5f9;
+      --bg-active: #eff6ff;
+      --border: #e2e8f0;
+      --text-primary: #0f172a;
+      --text-secondary: #1e293b;
+      --text-muted: #475569;
+      --text-dim: #64748b;
+      --text-placeholder: #94a3b8;
+      --shadow: rgba(0,0,0,0.08);
+      --overlay-bg: rgba(248,250,252,0.9);
+    }
+    [data-theme="dark"] {
+      --bg-body: #0f172a;
+      --bg-surface: #1e293b;
+      --bg-hover: #263548;
+      --bg-active: #1d3a5e;
+      --border: #334155;
+      --text-primary: #f1f5f9;
+      --text-secondary: #e2e8f0;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --text-placeholder: #475569;
+      --shadow: rgba(0,0,0,0.5);
+      --overlay-bg: rgba(15,23,42,0.85);
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg-body);
+      color: var(--text-secondary);
+      display: flex;
+      flex-direction: column;
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      gap: 12px;
+    }
+    .course-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 400px;
+    }
+    .progress-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 1;
+      max-width: 400px;
+    }
+    .progress-bar {
+      flex: 1;
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #6366f1, #8b5cf6);
+      border-radius: 3px;
+      transition: width 0.4s ease;
+    }
+    .progress-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+    .completion-badge {
+      background: #22c55e;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+
+    /* ── Main layout ── */
+    .main {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      position: relative;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 220px;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      flex-shrink: 0;
+      transition: width 0.2s ease, padding 0.2s ease;
+    }
+    .sidebar.collapsed {
+      width: 0;
+      overflow: hidden;
+      border-right: none;
+    }
+    .sidebar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px 4px;
+    }
+    .sidebar-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+    /* ── Hamburger menu button ── */
+    .hamburger-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 6px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s;
+    }
+    .hamburger-btn:hover {
+      background: var(--border);
+    }
+    .hamburger-icon {
+      display: block;
+      width: 18px;
+      height: 2px;
+      background: var(--text-muted);
+      position: relative;
+      transition: background 0.15s;
+    }
+    .hamburger-icon::before,
+    .hamburger-icon::after {
+      content: '';
+      display: block;
+      width: 18px;
+      height: 2px;
+      background: var(--text-muted);
+      position: absolute;
+      left: 0;
+      transition: background 0.15s;
+    }
+    .hamburger-icon::before { top: -6px; }
+    .hamburger-icon::after { top: 6px; }
+    .hamburger-btn:hover .hamburger-icon,
+    .hamburger-btn:hover .hamburger-icon::before,
+    .hamburger-btn:hover .hamburger-icon::after {
+      background: var(--text-primary);
+    }
+    .slide-thumb {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .slide-thumb:hover { background: var(--bg-hover); }
+    .slide-thumb.active {
+      background: var(--bg-active);
+      border-left-color: #6366f1;
+    }
+    .slide-thumb.visited .thumb-num {
+      background: #6366f1;
+      color: #fff;
+    }
+    .thumb-num {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--border);
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.2s;
+    }
+    .thumb-title {
+      font-size: 12px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .slide-thumb.active .thumb-title { color: var(--text-secondary); }
+
+    /* ── Slide viewer ── */
+    .viewer {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px 20px;
+      overflow-y: auto;
+      min-height: 0;
+    }
+    .slide-container {
+      position: relative;
+      width: 100%;
+      max-width: 960px;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 20px 60px var(--shadow);
+      overflow: visible;
+      flex-shrink: 0;
+    }
+
+    /* ── Slide HTML content ── */
+    .slide-html-content {
+      width: 100%;
+    }
+    .slide-html-content .slide-content {
+      width: 100%;
+      color: #111111;
+      font-family: 'Segoe UI', Calibri, Arial, sans-serif;
+      line-height: 1.6;
+    }
+
+    /* ── Title shapes ── */
+    .slide-html-content .shape-title {
+      margin-bottom: 20px;
+    }
+    .slide-html-content .shape-title h1 {
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1.2;
+      margin: 0 0 4px 0;
+      color: #1a1a2e;
+    }
+    .slide-html-content .shape-title h2 {
+      font-size: 22px;
+      font-weight: 600;
+      line-height: 1.3;
+      margin: 0;
+      color: #333;
+    }
+
+    /* ── Text shapes ── */
+    .slide-html-content .shape-text {
+      margin-bottom: 16px;
+    }
+    .slide-html-content .shape-text p {
+      margin: 0 0 6px 0;
+      line-height: 1.6;
+    }
+
+    /* ── Image shapes ── */
+    .slide-html-content .shape-image {
+      margin: 16px 0;
+      text-align: center;
+    }
+    .slide-html-content .shape-image img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    /* ── Table shapes ── */
+    .slide-html-content .shape-table {
+      margin: 16px 0;
+      overflow-x: auto;
+    }
+    .slide-html-content .shape-table table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    /* ── Group shapes ── */
+    .slide-html-content .shape-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+
+    /* ── Grid rows (side-by-side shapes) ── */
+    .slide-html-content .slide-row {
+      margin-bottom: 16px;
+    }
+
+    /* ── Controls ── */
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 14px;
+      flex-shrink: 0;
+    }
+    .btn {
+      padding: 9px 20px;
+      border-radius: 8px;
+      border: none;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    .btn-primary {
+      background: #6366f1;
+      color: #fff;
+    }
+    .btn-primary:not(:disabled):hover { background: #4f46e5; }
+    .btn-ghost {
+      background: var(--bg-surface);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:not(:disabled):hover { background: var(--bg-hover); color: var(--text-secondary); }
+
+    .slide-counter {
+      font-size: 13px;
+      color: var(--text-dim);
+      min-width: 90px;
+      text-align: center;
+    }
+
+    /* ── Completed overlay ── */
+    .complete-overlay {
+      position: absolute;
+      inset: 0;
+      background: var(--overlay-bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      border-radius: 8px;
+      backdrop-filter: blur(4px);
+      z-index: 10;
+    }
+    .complete-icon {
+      font-size: 56px;
+    }
+    .complete-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: #22c55e;
+    }
+    .complete-sub {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+    .btn-restart {
+      margin-top: 8px;
+      padding: 10px 28px;
+      background: #22c55e;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-restart:hover { background: #16a34a; }
+
+    /* ── Close button ── */
+    .btn-close {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 18px;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      line-height: 1;
+      flex-shrink: 0;
+      transition: color 0.15s, background 0.15s;
+    }
+    .btn-close:hover {
+      color: var(--text-primary);
+      background: var(--border);
+    }
+
+    /* Scrollbar */
+    .sidebar::-webkit-scrollbar { width: 4px; }
+    .sidebar::-webkit-scrollbar-track { background: transparent; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* ── Continuous scroll mode ── */
+    .viewer.continuous {
+      align-items: center;
+    }
+    .viewer.continuous .continuous-slide {
+      margin-bottom: 24px;
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <!-- Header -->
+  <div class="header">
+    <button v-if="showSidebar" class="hamburger-btn" @click="sidebarOpen = !sidebarOpen" title="Toggle slides menu">
+      <span class="hamburger-icon"></span>
+    </button>
+    <span class="course-title">Welcome to TC</span>
+    <div class="progress-wrap">
+      <div class="progress-bar">
+        <div class="progress-fill" :style="{width: progressPct + '%'}"></div>
+      </div>
+      <span class="progress-label">{{progressPct}}%</span>
+    </div>
+    <span v-if="completed" class="completion-badge">✓ Completed</span>
+    <button class="btn-close" @click="closeCourse" title="Close course">✕</button>
+  </div>
+
+  <!-- Body -->
+  <div class="main">
+    <!-- Sidebar -->
+    <div v-if="showSidebar" class="sidebar" :class="{collapsed: !sidebarOpen}">
+      <div class="sidebar-header">
+        <div class="sidebar-label">Slides</div>
+      </div>
+      <div v-for="(slide, i) in slides" :key="i"
+           v-show="slide.showInSidebar"
+           class="slide-thumb"
+           :class="{active: isActiveGroup(i), visited: visited.has(i)}"
+           @click="goTo(i)">
+        <div class="thumb-num">{{sidebarNumber(i)}}</div>
+        <div class="thumb-title">{{slide.title}}</div>
+      </div>
+    </div>
+
+    <!-- Paginated viewer -->
+    <div v-if="displayMode === 'paginated'" class="viewer">
+      <div class="slide-container">
+        <div class="slide-html-content" v-html="slides[current].content"></div>
+
+        <!-- Completion overlay -->
+        <div v-if="showComplete" class="complete-overlay">
+          <div class="complete-icon">🎉</div>
+          <div class="complete-title">Course Complete!</div>
+          <div class="complete-sub">You've viewed all {{totalSlides}} slides.</div>
+          <button class="btn-restart" @click="restart">Review Again</button>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="controls">
+        <button class="btn btn-ghost" @click="prev" :disabled="current === 0">
+          ← Previous
+        </button>
+        <span class="slide-counter">{{current + 1}} / {{slides.length}}</span>
+        <button class="btn btn-primary" @click="next"
+                :disabled="current === slides.length - 1 && completed">
+          {{current === slides.length - 1 ? 'Finish' : 'Next →'}}
+        </button>
+      </div>
+    </div>
+
+    <!-- Continuous scroll viewer -->
+    <div v-else class="viewer continuous" ref="scrollViewer">
+      <div v-for="(slide, i) in slides" :key="i"
+           :id="'slide-' + i"
+           class="slide-container continuous-slide">
+        <div class="slide-html-content" v-html="slide.content"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="scorm.js"></script>
+<script>
+const { createApp, ref, computed, onMounted, onBeforeUnmount, nextTick } = Vue;
+
+const SLIDES = [{"content": "<div class=\"slide-content\" style=\"width:100%;background:#ffffff;padding:32px 40px;\"><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-image\"><img src=\"slides/images/img-001.png\" alt=\"\" /></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:40.0pt;color:#111111;font-weight:bold;font-family:'Impact',sans-serif\">Learning</span><span style=\"font-size:40.0pt;color:#000000;font-weight:bold;font-family:'Impact',sans-serif\"> </span></p></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:40.0pt;color:#254E0E;font-weight:bold;font-family:'Impact',sans-serif\">Development</span><span style=\"font-size:40.0pt;color:#254E0E;font-weight:bold;font-family:'Impact',sans-serif\"> </span></p></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:40.0pt;color:#111111;font-weight:bold;font-family:'Impact',sans-serif\">Series</span></p></div><div class=\"shape-text\" style=\"background-color:#254E0E;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:16.0pt;font-family:'Script MT Bold',sans-serif\">Operational Support Excellence </span></p></div></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:44.0pt;color:#271714;font-weight:bold;font-family:'Arial Black',sans-serif\">PRIVACY POLICY</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:16.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">CLICK TO BEGIN </span></p></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:11897136fr 11897136fr 11897136fr;gap:16px;align-items:start;\"><div><div class=\"shape-text\" style=\"background-color:#254E0E;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-text\" style=\"background-color:#81BE41;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-text\" style=\"background-color:#254E0E;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div></div></div><div class=\"slide-content\" style=\"width:100%;background:#ffffff;padding:32px 40px;\"><div class=\"slide-row\" style=\"display:grid;grid-template-columns:3216965fr 7412743fr;gap:16px;align-items:start;\"><div><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-image\"><img src=\"slides/images/img-002.png\" alt=\"\" /></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:24.0pt;color:#111111;font-weight:bold;font-family:'Impact',sans-serif\">Learning</span><span style=\"font-size:28.0pt;color:#000000;font-weight:bold;font-family:'Impact',sans-serif\"> </span></p></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:24.0pt;color:#4EA72E;font-weight:bold;font-family:'Impact',sans-serif\">Development</span><span style=\"font-size:24.0pt;color:#000000;font-weight:bold;font-family:'Impact',sans-serif\"> </span></p></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:24.0pt;color:#111111;font-weight:bold;font-family:'Impact',sans-serif\">Series</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:12.0pt;font-family:'Script MT Bold',sans-serif\">Operational Support Excellence </span></p></div></div></div><div><div class=\"shape-group\"><div class=\"shape-image\"><img src=\"slides/images/img-003.png\" alt=\"\" /></div></div></div></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Aptos',sans-serif\">Education is the most powerful weapon which you can use to </span><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Aptos',sans-serif\">change the world</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Aptos',sans-serif\">Nelson Mandela</span></p></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:5463118fr 5775265fr 5463118fr;gap:16px;align-items:start;\"><div><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Aptos',sans-serif\">1</span></p></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;font-family:'Avenir Next LT Pro',sans-serif\">Use the navigation bar on the left side of the screen to navigate through the lesson. </span></p></div></div></div><div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:24.0pt;font-family:'Aptos',sans-serif\">How to complete this lesson:</span></p></div></div><div><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Aptos',sans-serif\">5</span></p></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;font-family:'Avenir Next LT Pro',sans-serif\">Click the tabs that say \u201c</span><span style=\"font-size:14.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">click</span><span style=\"font-size:14.0pt;font-family:'Avenir Next LT Pro',sans-serif\">\u201d to see more information about the topic. </span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:16.0pt;font-weight:bold;font-family:'Aptos',sans-serif\">CLICK</span></p></div></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:5463118fr 5463118fr;gap:16px;align-items:start;\"><div><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Aptos',sans-serif\">2</span></p></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;font-family:'Avenir Next LT Pro',sans-serif\">Click the </span><span style=\"font-size:14.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">menu</span><span style=\"font-size:14.0pt;font-family:'Avenir Next LT Pro',sans-serif\"> button to open the menu. </span><span style=\"font-size:14.0pt;font-family:'Avenir Next LT Pro',sans-serif\">Click the menu button again to close the menu. </span></p></div></div><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div></div></div><div><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Aptos',sans-serif\">6</span></p></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:13.5pt;font-family:'Avenir Next LT Pro',sans-serif\">Click the link on the last page of the lesson to complete the assessment. </span><span style=\"font-size:13.5pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Assessments can only be taken ONCE. </span></p></div></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:5463118fr 1791320fr 1039664fr;gap:16px;align-items:start;\"><div><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Aptos',sans-serif\">3</span></p></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:13.5pt;font-family:'Avenir Next LT Pro',sans-serif\">Click the </span><span style=\"font-size:13.5pt;font-style:italic;font-family:'Avenir Next LT Pro',sans-serif\">forward</span><span style=\"font-size:13.5pt;font-family:'Avenir Next LT Pro',sans-serif\"> arrow to go to the next page. </span><span style=\"font-size:13.5pt;font-family:'Avenir Next LT Pro',sans-serif\">Click the </span><span style=\"font-size:13.5pt;font-style:italic;font-family:'Avenir Next LT Pro',sans-serif\">back</span><span style=\"font-size:13.5pt;font-family:'Avenir Next LT Pro',sans-serif\"> arrow to go to the previous page.</span></p>\n<p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:32.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">START</span></p></div></div><div><div class=\"shape-image\"><img src=\"slides/images/img-004.png\" alt=\"\" /></div></div></div><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Aptos',sans-serif\">4</span></p></div></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;font-family:'Avenir Next LT Pro',sans-serif\">The home button will take you back to this </span><span style=\"font-size:14.0pt;font-family:'Avenir Next LT Pro',sans-serif\">instructions page.</span></p></div></div><div class=\"shape-image\"><img src=\"slides/images/img-005.png\" alt=\"\" /></div></div><div class=\"shape-text\" style=\"background-color:#254E0E;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div class=\"slide-content\" style=\"width:100%;background:#ffffff;padding:32px 40px;\"><div class=\"slide-row\" style=\"display:grid;grid-template-columns:2796663fr 569327fr 461968fr 8328032fr 6426888fr 2206813fr;gap:16px;align-items:start;\"><div><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\" style=\"background-color:#FFFFCC;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#197C75;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Protecting Privacy</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#2C5588;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Sensitive Information</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#F06840;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">More Information</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#80BC44;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">What should you do?</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#F17B3C;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Key Points</span></p></div></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:12.0pt;font-family:'Avenir Next LT Pro',sans-serif\">Click on menu to close menu</span></p></div></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#717372;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Assessment</span></p></div></div><div class=\"shape-image\"><img src=\"slides/images/img-006.png\" alt=\"\" /></div></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#717372;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Instructions</span></p></div></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:54.0pt;color:#197C75;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Protecting Privacy </span></p></div></div><div><div class=\"shape-image\"><img src=\"slides/images/img-007.gif\" alt=\"\" /></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:2436640fr 4685437fr;gap:16px;align-items:start;\"><div><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:16.0pt;font-family:'Avenir Next LT Pro',sans-serif\">Disclosing information to a third party breaches our privacy policy and the Privacy Act, which can make Ontario One Call legally liable</span></p></div></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:17.0pt;color:#197C75;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Legal consequences </span></p></div></div></div><div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Protecting privacy is essential to avoid: </span></p></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:2405742fr 2408505fr 2405742fr 2419562fr 2405742fr;gap:16px;align-items:start;\"><div><div class=\"shape-text\" style=\"background-color:#197C75;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">CLICK</span></p></div></div><div><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:16.0pt;font-family:'Avenir Next LT Pro',sans-serif\">Loss of trust due to mishandling sensitive information can lead to irreparable damage to Ontario One Call\u2019s credibility</span></p>\n<p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:17.0pt;color:#197C75;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Loss of Trust</span></p></div></div></div><div><div class=\"shape-text\" style=\"background-color:#197C75;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">CLICK</span></p></div></div><div><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:16.0pt;font-family:'Avenir Next LT Pro',sans-serif\">Negative word-of-mouth can spread quickly through social media which can hinder the end goal of everyone digging safely</span></p></div></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:17.0pt;color:#197C75;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Negative Word-of-Mouth</span></p></div></div></div><div><div class=\"shape-text\" style=\"background-color:#197C75;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">CLICK</span></p></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:479531fr 319197fr;gap:16px;align-items:start;\"><div><div class=\"shape-image\"><img src=\"slides/images/img-008.png\" alt=\"\" /></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:319197fr 11391923fr;gap:16px;align-items:start;\"><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-text\" style=\"background-color:#197C75;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div></div></div><div class=\"slide-content\" style=\"width:100%;background:#ffffff;padding:32px 40px;\"><div class=\"slide-row\" style=\"display:grid;grid-template-columns:2796663fr 569327fr 461968fr 6002665fr 7369005fr;gap:16px;align-items:start;\"><div><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#197C75;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Protecting Privacy</span></p></div><div class=\"shape-text\" style=\"background-color:#FFFFCC;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#2C5588;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Sensitive Information</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#F06840;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">More Information</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#80BC44;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">What should you do?</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#F17B3C;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Key Points</span></p></div></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:12.0pt;font-family:'Avenir Next LT Pro',sans-serif\">Click on menu to close menu</span></p></div></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#717372;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Assessment</span></p></div></div><div class=\"shape-image\"><img src=\"slides/images/img-009.png\" alt=\"\" /></div></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#717372;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Instructions</span></p></div></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:54.0pt;color:#2C5588;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Sensitive Information</span></p></div></div></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Sensitive information refers to any data that could potentially compromise an </span><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">individual\u2019s privacy and/or security if disclosed or mishandled </span></p></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:2413572fr 2405742fr 2431169fr 2405742fr 3854931fr;gap:16px;align-items:start;\"><div><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:16.0pt;font-family:'Avenir Next LT Pro',sans-serif\">Do not share caller information over unsecured channels such as personal email or messaging apps </span></p></div></div></div><div><div class=\"shape-text\" style=\"background-color:#2C5588;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">CLICK</span></p></div></div><div><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:16.0pt;font-family:'Avenir Next LT Pro',sans-serif\">Do not post caller information on the Teams General Chat such as funny names or locations </span></p></div></div></div><div><div class=\"shape-text\" style=\"background-color:#2C5588;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">CLICK</span></p></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:16.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Sensitive information</span><span style=\"font-size:16.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\"> </span></p>\n<p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:16.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Examples:</span></p></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:3631472fr 2819400fr 2819400fr 2819400fr 2819400fr 2819400fr 2819400fr;gap:16px;align-items:start;\"><div><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-text\" style=\"background-color:#2C5588;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-family:'Avenir Next LT Pro',sans-serif\">Can you think of any other types of sensitive information you might encounter in a locate request?  </span></p></div></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:24.0pt;font-weight:bold;font-family:'Segoe Print',sans-serif\">Click to reveal </span></p></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Property access information</span></p></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Alternate/Emergency contact information</span></p></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Addresses</span></p></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Names </span></p></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Email addresses </span></p></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:479531fr 319197fr;gap:16px;align-items:start;\"><div><div class=\"shape-image\"><img src=\"slides/images/img-010.png\" alt=\"\" /></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:319197fr 11391923fr 903637fr 903637fr 971052fr 1532214fr 1214407fr;gap:16px;align-items:start;\"><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-text\" style=\"background-color:#2C5588;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:11.0pt;color:#2C5588;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Names</span></p></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:11.0pt;color:#2C5588;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Addresses</span></p></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:11.0pt;color:#2C5588;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Email addresses</span></p></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:10.0pt;color:#2C5588;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Alternate/Emergency contact info</span></p></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:11.0pt;color:#2C5588;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Property access info</span></p></div></div></div></div><div class=\"slide-content\" style=\"width:100%;background:#ffffff;padding:32px 40px;\"><div class=\"slide-row\" style=\"display:grid;grid-template-columns:2796663fr 569327fr 461968fr 7096075fr 6093336fr;gap:16px;align-items:start;\"><div><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#197C75;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Protecting Privacy</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#2C5588;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Sensitive Information</span></p></div><div class=\"shape-text\" style=\"background-color:#FFFFCC;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#F06840;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">More Information</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#80BC44;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">What should you do?</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#F17B3C;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Key Points</span></p></div></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:12.0pt;font-family:'Avenir Next LT Pro',sans-serif\">Click on menu to close menu</span></p></div></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#717372;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Assessment</span></p></div></div><div class=\"shape-image\"><img src=\"slides/images/img-011.png\" alt=\"\" /></div></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#717372;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Instructions</span></p></div></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:54.0pt;color:#F06840;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">More Information</span></p></div></div></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Where can you find more information about Ontario One Call\u2019s Privacy Policy?</span></p></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:2405741fr 2405742fr 2405742fr 2405741fr 789904fr 1789552fr;gap:16px;align-items:start;\"><div><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:17.0pt;color:#F06840;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">SharePoint</span></p></div></div></div><div><div class=\"shape-text\" style=\"background-color:#F06840;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">CLICK</span></p></div></div><div><div class=\"shape-text\" style=\"background-color:#F06840;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">CLICK</span></p></div></div><div><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#F06840;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">www.ontarioonecall.ca</span></p></div></div></div><div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-family:'Brush Script MT',sans-serif\">Click!</span></p></div></div><div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;font-style:italic;font-family:'Avenir Next LT Pro',sans-serif\">Navigate through the website to see if you can find the Privacy Policy </span></p></div></div></div><div class=\"shape-text\" style=\"background-color:#F06840;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:4033185fr 3805836fr;gap:16px;align-items:start;\"><div><div class=\"shape-image\"><img src=\"slides/images/img-012.png\" alt=\"\" /></div></div><div><div class=\"shape-image\"><img src=\"slides/images/img-013.png\" alt=\"\" /></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:479531fr 319197fr 942975fr;gap:16px;align-items:start;\"><div><div class=\"shape-image\"><img src=\"slides/images/img-014.png\" alt=\"\" /></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-text\" style=\"background-color:#FFFF00;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:319197fr 11391923fr;gap:16px;align-items:start;\"><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-text\" style=\"background-color:#F06840;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div></div></div><div class=\"slide-content\" style=\"width:100%;background:#ffffff;padding:32px 40px;\"><div class=\"slide-row\" style=\"display:grid;grid-template-columns:2796663fr 569327fr 461968fr 7435690fr 1620194fr;gap:16px;align-items:start;\"><div><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#197C75;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Protecting Privacy</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#2C5588;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Sensitive Information</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#F06840;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">More Information</span></p></div><div class=\"shape-text\" style=\"background-color:#FFFFCC;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#80BC44;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">What should you do?</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#F17B3C;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Key Points</span></p></div></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:12.0pt;font-family:'Avenir Next LT Pro',sans-serif\">Click on menu to close menu</span></p></div></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#717372;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Assessment</span></p></div></div><div class=\"shape-image\"><img src=\"slides/images/img-015.png\" alt=\"\" /></div></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#717372;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Instructions</span></p></div></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:54.0pt;color:#80BC44;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">What Should You Do?</span></p></div></div><div><div class=\"shape-image\"><img src=\"slides/images/img-016.png\" alt=\"\" /></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:1037186fr 1023635fr;gap:16px;align-items:start;\"><div><div class=\"shape-image\"><img src=\"slides/images/img-017.png\" alt=\"\" /></div></div><div><div class=\"shape-image\"><img src=\"slides/images/img-018.png\" alt=\"\" /></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:1116140fr 2874838fr 1116140fr 2874838fr;gap:16px;align-items:start;\"><div><div class=\"shape-group\"><div class=\"shape-text\" style=\"background-color:#80BC44;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">CLICK</span></p></div></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:16.0pt;color:#271714;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">DO NOT </span><span style=\"font-size:16.0pt;color:#271714;font-family:'Avenir Next LT Pro',sans-serif\">disclose any information to someone not named on the request</span></p></div></div><div><div class=\"shape-group\"><div class=\"shape-text\" style=\"background-color:#80BC44;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">CLICK</span></p></div></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:15.0pt;color:#271714;font-family:'Avenir Next LT Pro',sans-serif\"> Encourage the caller to reach out directly to the person who created the request and ask them to call in and speak to us</span></p></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:1116140fr 2874838fr 1116140fr 2874838fr;gap:16px;align-items:start;\"><div><div class=\"shape-group\"><div class=\"shape-text\" style=\"background-color:#80BC44;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">CLICK</span></p></div></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:16.0pt;color:#271714;font-family:'Avenir Next LT Pro',sans-serif\"> </span><span style=\"font-size:16.0pt;color:#271714;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">DO NOT </span><span style=\"font-size:16.0pt;color:#271714;font-family:'Avenir Next LT Pro',sans-serif\">reveal requests found in the system to someone not named on the request</span></p></div></div><div><div class=\"shape-group\"><div class=\"shape-text\" style=\"background-color:#80BC44;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">CLICK</span></p></div></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#271714;font-family:'Avenir Next LT Pro',sans-serif\"> Suggest to the caller for future requests it would be helpful to list an alternate contact or \u201cAnyone in Office\u201d as the alternate contact</span></p></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:479531fr 319197fr;gap:16px;align-items:start;\"><div><div class=\"shape-image\"><img src=\"slides/images/img-019.png\" alt=\"\" /></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:319197fr 11391923fr;gap:16px;align-items:start;\"><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-text\" style=\"background-color:#80BC44;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div></div></div><div class=\"slide-content\" style=\"width:100%;background:#ffffff;padding:32px 40px;\"><div class=\"slide-row\" style=\"display:grid;grid-template-columns:2796663fr 569327fr 461968fr 3692679fr 2417928fr 289998fr;gap:16px;align-items:start;\"><div><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#197C75;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Protecting Privacy</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#2C5588;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Sensitive Information</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#F06840;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">More Information</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#80BC44;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">What should you do?</span></p></div><div class=\"shape-text\" style=\"background-color:#FFFFCC;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#F17B3C;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Key Points</span></p></div></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:12.0pt;font-family:'Avenir Next LT Pro',sans-serif\">Click on menu to close menu</span></p></div></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#717372;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Assessment</span></p></div></div><div class=\"shape-image\"><img src=\"slides/images/img-020.png\" alt=\"\" /></div></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#717372;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Instructions</span></p></div></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:54.0pt;color:#F17B3C;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Key Points</span></p></div></div><div><div class=\"shape-image\"><img src=\"slides/images/img-021.gif\" alt=\"\" /></div></div><div><div class=\"shape-text\" style=\"background-color:#663300;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:428934fr 7426200fr;gap:16px;align-items:start;\"><div><div class=\"shape-text\" style=\"background-color:#F17B3C;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"color:#271714;font-family:'Avenir Next LT Pro',sans-serif\">Verify the caller\u2019s name to ensure you are speaking with the person </span><span style=\"color:#271714;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">named</span><span style=\"color:#271714;font-family:'Avenir Next LT Pro',sans-serif\"> on the request </span></p></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:428934fr 7420555fr;gap:16px;align-items:start;\"><div><div class=\"shape-text\" style=\"background-color:#F17B3C;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"color:#271714;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">DO NOT </span><span style=\"color:#271714;font-family:'Avenir Next LT Pro',sans-serif\">disclose any information to anyone not named on the request </span></p></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:428934fr 7419210fr;gap:16px;align-items:start;\"><div><div class=\"shape-text\" style=\"background-color:#F17B3C;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"color:#271714;font-family:'Avenir Next LT Pro',sans-serif\">Encourage the caller to reach out directly to the person who created the request and ask them to call in and speak to us</span></p></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:479531fr 428934fr 7414137fr;gap:16px;align-items:start;\"><div><div class=\"shape-image\"><img src=\"slides/images/img-022.png\" alt=\"\" /></div></div><div><div class=\"shape-text\" style=\"background-color:#F17B3C;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"color:#271714;font-family:'Avenir Next LT Pro',sans-serif\">Reach out to your TL during your next one on one if you have more questions regarding the Privacy Policy </span></p></div></div></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:319197fr 319197fr;gap:16px;align-items:start;\"><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div></div><div class=\"shape-text\" style=\"background-color:#F17B3C;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div class=\"slide-content\" style=\"width:100%;background:#ffffff;padding:32px 40px;\"><div class=\"slide-row\" style=\"display:grid;grid-template-columns:2796663fr 569327fr 461968fr;gap:16px;align-items:start;\"><div><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#197C75;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Protecting Privacy</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#2C5588;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Sensitive Information</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#F06840;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">More Information</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#80BC44;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">What should you do?</span></p></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#F17B3C;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Key Points</span></p></div></div><div class=\"shape-text\"><p style=\"text-align:left;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:12.0pt;font-family:'Avenir Next LT Pro',sans-serif\">Click on menu to close menu</span></p></div></div><div class=\"shape-text\" style=\"background-color:#FFFFCC;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#717372;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Assessment</span></p></div></div><div class=\"shape-image\"><img src=\"slides/images/img-023.png\" alt=\"\" /></div></div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:14.0pt;color:#717372;font-weight:bold;font-family:'Avenir Next LT Pro',sans-serif\">Instructions</span></p></div></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-group\"><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div></div></div><div class=\"shape-image\"><img src=\"slides/images/img-024.png\" alt=\"\" /></div><div class=\"slide-row\" style=\"display:grid;grid-template-columns:479531fr 319197fr 2611330fr;gap:16px;align-items:start;\"><div><div class=\"shape-image\"><img src=\"slides/images/img-025.png\" alt=\"\" /></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div><div><div class=\"shape-text\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\"><span style=\"font-size:18.0pt;color:#717372;font-weight:bold;font-family:'Bierstadt',sans-serif\">CLICK HERE</span><span style=\"font-size:18.0pt;color:#717372;font-weight:bold;font-family:'Bierstadt',sans-serif\">to take assessment</span></p></div></div></div><div class=\"shape-text\" style=\"background-color:#717372;padding:12px 16px;border-radius:6px;\"><p style=\"text-align:center;margin:0;padding:2px 0;line-height:1.4\">&nbsp;</p></div></div>", "title": "Slide 1", "slideCount": 8, "showInSidebar": true}];
+const DISPLAY_MODE = 'paginated';
+
+createApp({
+  setup() {
+    const slides = ref(SLIDES);
+    const current = ref(0);
+    const visited = ref(new Set([0]));
+    const showComplete = ref(false);
+    const completed = ref(false);
+    const sidebarOpen = ref(true);
+    const displayMode = ref(DISPLAY_MODE);
+    const scrollViewer = ref(null);
+
+    const totalSlides = slides.value.reduce((sum, s) => sum + s.slideCount, 0);
+    const showSidebar = computed(() => slides.value.filter(s => s.showInSidebar).length > 1);
+    const progressPct = computed(() => {
+      let viewedCount = 0;
+      visited.value.forEach(i => {
+        viewedCount += slides.value[i].slideCount;
+      });
+      return Math.round((viewedCount / totalSlides) * 100);
+    });
+
+    function saveBookmark() {
+      SCORM.setLocation(String(current.value));
+      const data = JSON.stringify(Array.from(visited.value));
+      SCORM.setSuspendData(data);
+    }
+
+    function markVisited(idx) {
+      visited.value.add(idx);
+      let viewedCount = 0;
+      visited.value.forEach(i => {
+        viewedCount += slides.value[i].slideCount;
+      });
+      const measure = viewedCount / totalSlides;
+      SCORM.setProgress(measure);
+      saveBookmark();
+
+      if (viewedCount === totalSlides && !completed.value && displayMode.value !== 'continuous') {
+        completed.value = true;
+        SCORM.complete();
+        showComplete.value = true;
+      }
+    }
+
+    function goTo(idx) {
+      current.value = idx;
+      markVisited(idx);
+      showComplete.value = false;
+      if (displayMode.value === 'continuous') {
+        const el = document.getElementById('slide-' + idx);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+
+    function next() {
+      if (current.value < slides.value.length - 1) {
+        goTo(current.value + 1);
+      } else {
+        markVisited(current.value);
+        if (completed.value) showComplete.value = true;
+      }
+    }
+
+    function prev() {
+      if (current.value > 0) goTo(current.value - 1);
+    }
+
+    function restart() {
+      showComplete.value = false;
+      goTo(0);
+    }
+
+    function closeCourse() {
+      SCORM.terminate();
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'scorm-close' }, '*');
+      }
+      window.close();
+    }
+
+    function sidebarNumber(idx) {
+      // Count only slides with showInSidebar up to and including idx
+      let n = 0;
+      for (let i = 0; i <= idx; i++) {
+        if (slides.value[i].showInSidebar) n++;
+      }
+      return n;
+    }
+
+    function isActiveGroup(idx) {
+      // In paginated mode or if this slide is current, simple match
+      if (current.value === idx) return true;
+      if (displayMode.value !== 'continuous') return false;
+      // In continuous mode, highlight this sidebar item if current slide
+      // falls between this item and the next sidebar item
+      if (!slides.value[idx].showInSidebar) return false;
+      // Find next sidebar-visible slide after idx
+      let nextVisible = slides.value.length;
+      for (let i = idx + 1; i < slides.value.length; i++) {
+        if (slides.value[i].showInSidebar) { nextVisible = i; break; }
+      }
+      return current.value >= idx && current.value < nextVisible;
+    }
+
+    onMounted(() => {
+      SCORM.init();
+
+      // Restore bookmark from previous session
+      const savedLoc = SCORM.getLocation();
+      const savedData = SCORM.getSuspendData();
+
+      if (savedData) {
+        try {
+          const arr = JSON.parse(savedData);
+          if (Array.isArray(arr)) {
+            arr.forEach(i => visited.value.add(i));
+          }
+        } catch(e) { /* ignore corrupt data */ }
+      }
+
+      const resumeSlide = savedLoc ? parseInt(savedLoc, 10) : 0;
+      if (resumeSlide >= 0 && resumeSlide < slides.value.length) {
+        current.value = resumeSlide;
+      }
+
+      // Update progress from restored visited set
+      markVisited(current.value);
+
+      // Continuous mode: set up IntersectionObserver to track visible slides
+      // and scroll listener to trigger completion at the bottom
+      if (displayMode.value === 'continuous') {
+        nextTick(() => {
+          const viewer = scrollViewer.value;
+          const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+              if (entry.isIntersecting) {
+                const idx = parseInt(entry.target.id.replace('slide-', ''), 10);
+                if (!isNaN(idx)) {
+                  current.value = idx;
+                  markVisited(idx);
+                }
+              }
+            });
+          }, {
+            root: viewer,
+            threshold: 0.3,
+          });
+          slides.value.forEach((_, i) => {
+            const el = document.getElementById('slide-' + i);
+            if (el) observer.observe(el);
+          });
+
+          // Complete only when user scrolls to the bottom
+          if (viewer) {
+            const onScroll = () => {
+              if (!completed.value && viewer.scrollTop + viewer.clientHeight >= viewer.scrollHeight - 20) {
+                for (let i = 0; i < slides.value.length; i++) {
+                  visited.value.add(i);
+                }
+                SCORM.setProgress(1);
+                completed.value = true;
+                SCORM.complete();
+                saveBookmark();
+                viewer.removeEventListener('scroll', onScroll);
+              }
+            };
+            viewer.addEventListener('scroll', onScroll);
+          }
+        });
+      }
+    });
+
+    onBeforeUnmount(() => {
+      SCORM.terminate();
+    });
+
+    window.addEventListener('beforeunload', () => SCORM.terminate());
+
+    return { slides, current, visited, progressPct, showComplete, completed,
+              sidebarOpen, showSidebar, totalSlides, displayMode, scrollViewer,
+              goTo, next, prev, restart, closeCourse,
+              sidebarNumber, isActiveGroup };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

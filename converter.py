@@ -776,10 +776,21 @@ createApp({{
           const viewer = scrollViewer.value;
           if (!viewer) return;
 
-          // Scroll to resumed slide position
+          // Scroll to resumed slide position after SVG images load
           if (current.value > 0) {{
-            const el = document.getElementById('slide-' + current.value);
-            if (el) el.scrollIntoView({{ behavior: 'instant', block: 'start' }});
+            const imgs = viewer.querySelectorAll('.slide-svg-img');
+            if (imgs.length) {{
+              const loaded = Array.from(imgs).map(img =>
+                img.complete ? Promise.resolve() : new Promise(r => {{
+                  img.addEventListener('load', r, {{ once: true }});
+                  img.addEventListener('error', r, {{ once: true }});
+                }})
+              );
+              Promise.all(loaded).then(() => {{
+                const el = document.getElementById('slide-' + current.value);
+                if (el) el.scrollIntoView({{ behavior: 'instant', block: 'start' }});
+              }});
+            }}
           }}
 
           // Don't observe slides until first scroll — prevents auto-marking on load
