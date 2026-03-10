@@ -191,14 +191,14 @@ class HealthResponse(BaseModel):
 # Helpers
 # ─────────────────────────────────────────────
 
-ALLOWED_EXTENSIONS = {".ppt", ".pptx"}
+ALLOWED_EXTENSIONS = {".ppt", ".pptx", ".pdf"}
 
 def validate_upload(file: UploadFile) -> None:
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=422,
-            detail=f"Unsupported file type '{ext}'. Only .ppt and .pptx are accepted."
+            detail=f"Unsupported file type '{ext}'. Only .ppt, .pptx, and .pdf files are accepted."
         )
 
 def cleanup_file(path: str) -> None:
@@ -709,9 +709,9 @@ UPLOAD_PAGE_HTML = """<!DOCTYPE html>
         </svg>
       </div>
       <div class="upload-text"><strong>Drag &amp; drop</strong> your presentation here</div>
-      <div class="upload-hint">.pptx or .ppt files only</div>
+      <div class="upload-hint">.pptx, .ppt, or .pdf files</div>
       <button type="button" class="browse-btn" id="browse-btn">Browse Files</button>
-      <input type="file" id="file-input" accept=".ppt,.pptx" hidden/>
+      <input type="file" id="file-input" accept=".ppt,.pptx,.pdf" hidden/>
       <div id="validation-error" class="validation-error hidden"></div>
     </div>
 
@@ -832,7 +832,7 @@ UPLOAD_PAGE_HTML = """<!DOCTYPE html>
   let lastBlobUrl = null;
   let lastFilename = null;
 
-  const ALLOWED = ['.ppt', '.pptx'];
+  const ALLOWED = ['.ppt', '.pptx', '.pdf'];
 
   // ── Helpers ──
   function show(el) { el.classList.remove('hidden'); }
@@ -933,7 +933,7 @@ UPLOAD_PAGE_HTML = """<!DOCTYPE html>
     if (!file) return;
     const ext = getExtension(file.name);
     if (!ALLOWED.includes(ext)) {
-      showValidationError('Only .ppt and .pptx files are supported.');
+      showValidationError('Only .ppt, .pptx, and .pdf files are supported.');
       return;
     }
     showFileSelected(file);
@@ -1210,7 +1210,7 @@ async def get_config():
 )
 async def convert_presentation(
     background_tasks: BackgroundTasks,
-    file: Annotated[UploadFile, File(description="The .pptx or .ppt file to convert")],
+    file: Annotated[UploadFile, File(description="The .pptx, .ppt, or .pdf file to convert")],
     title: Annotated[Optional[str], Form(description="Override the course title (optional)")] = None,
     mode: Annotated[Optional[str], Form(description="Display mode: 'paginated' or 'continuous' (default: paginated)")] = "paginated",
     theme: Annotated[Optional[str], Form(description="Theme: 'light' or 'dark' (default: light)")] = "light",
@@ -1290,7 +1290,7 @@ async def convert_presentation(
 
 @app.post("/api/upload", tags=["conversion"], summary="Upload a file for MCP conversion")
 async def upload_for_mcp(
-    file: Annotated[UploadFile, File(description="The .pptx or .ppt file to stage")],
+    file: Annotated[UploadFile, File(description="The .pptx, .ppt, or .pdf file to stage")],
 ):
     """Stage a presentation file and return a file_id.
 
@@ -1339,7 +1339,7 @@ async def api_info():
     return {
         "api_version": "1.0.0",
         "scorm_version": "2004 3rd Edition",
-        "supported_input_formats": [".pptx", ".ppt"],
+        "supported_input_formats": [".pptx", ".ppt", ".pdf"],
         "output_format": "zip",
         "slide_renderer": "LibreOffice SVG (via pdftocairo)",
         "scorm_player": "Vue 3 (CDN, no build step)",

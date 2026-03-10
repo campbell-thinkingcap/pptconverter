@@ -1,5 +1,5 @@
 """
-PPTX/PPT → SCORM 2004 3rd Edition Converter
+PPTX/PPT/PDF → SCORM 2004 3rd Edition Converter
 Renders slides as SVG via LibreOffice + pdftocairo, wraps in a Vue 3 SCORM player package.
 """
 import os
@@ -37,36 +37,58 @@ def _convert_ppt_to_pptx(ppt_path: str) -> str:
 
 
 # ─────────────────────────────────────────────
+# PDF utilities
+# ─────────────────────────────────────────────
+
+def _get_pdf_page_count(pdf_path: str) -> int:
+    """Get page count from a PDF using pdfinfo (poppler-utils)."""
+    result = subprocess.run(
+        ["pdfinfo", pdf_path], capture_output=True, text=True, timeout=30,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"pdfinfo failed: {result.stderr.strip()}")
+    for line in result.stdout.splitlines():
+        if line.startswith("Pages:"):
+            return int(line.split(":")[1].strip())
+    raise RuntimeError("Could not determine page count from pdfinfo output")
+
+
+# ─────────────────────────────────────────────
 # SVG Slide Extraction (LibreOffice + pdftocairo)
 # ─────────────────────────────────────────────
 
-def _extract_slide_svgs(pptx_path: str, work_dir: str) -> list[str]:
-    """Convert each slide to SVG via LibreOffice + pdftocairo.
+def _extract_slide_svgs(input_path: str, work_dir: str) -> list[str]:
+    """Convert each slide/page to SVG via pdftocairo.
 
-    Pipeline: PPTX → PDF (LibreOffice) → SVG per page (pdftocairo)
+    For PPTX: PPTX → PDF (LibreOffice) → SVG per page (pdftocairo)
+    For PDF:  PDF → SVG per page (pdftocairo) — skips LibreOffice
     SVGs are saved to work_dir/slides/ and returned as <img> tag HTML strings.
     """
     slides_dir = os.path.join(work_dir, "slides")
     os.makedirs(slides_dir, exist_ok=True)
 
-    # 1. PPTX → PDF via LibreOffice
-    result = subprocess.run(
-        ["libreoffice", "--headless", "--convert-to", "pdf", "--outdir", work_dir, pptx_path],
-        capture_output=True, text=True, timeout=120,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"LibreOffice PDF conversion failed: {result.stderr.strip()}")
+    if input_path.lower().endswith(".pdf"):
+        # PDF input — use directly
+        pdf_path = input_path
+        num_slides = _get_pdf_page_count(pdf_path)
+    else:
+        # PPTX input — convert to PDF via LibreOffice
+        result = subprocess.run(
+            ["libreoffice", "--headless", "--convert-to", "pdf", "--outdir", work_dir, input_path],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"LibreOffice PDF conversion failed: {result.stderr.strip()}")
 
-    pdf_name = Path(pptx_path).stem + ".pdf"
-    pdf_path = os.path.join(work_dir, pdf_name)
-    if not os.path.exists(pdf_path):
-        raise RuntimeError(f"LibreOffice did not produce expected PDF: {pdf_name}")
+        pdf_name = Path(input_path).stem + ".pdf"
+        pdf_path = os.path.join(work_dir, pdf_name)
+        if not os.path.exists(pdf_path):
+            raise RuntimeError(f"LibreOffice did not produce expected PDF: {pdf_name}")
 
-    # 2. Get slide count from python-pptx
-    prs = Presentation(pptx_path)
-    num_slides = len(prs.slides)
+        prs = Presentation(input_path)
+        num_slides = len(prs.slides)
 
-    # 3. PDF → SVG per page via pdftocairo
+    # PDF → SVG per page via pdftocairo
     slide_content_list = []
     for page in range(1, num_slides + 1):
         svg_name = f"slide-{page:02d}.svg"
@@ -86,9 +108,12 @@ def _extract_slide_svgs(pptx_path: str, work_dir: str) -> list[str]:
     return slide_content_list
 
 
-def _get_slide_titles(pptx_path: str) -> list[str]:
-    """Extract slide titles from PPTX for accessibility & navigation."""
-    prs = Presentation(pptx_path)
+def _get_slide_titles(input_path: str) -> list[str]:
+    """Extract slide titles for accessibility & navigation."""
+    if input_path.lower().endswith(".pdf"):
+        count = _get_pdf_page_count(input_path)
+        return [f"Page {i}" for i in range(1, count + 1)]
+    prs = Presentation(input_path)
     titles = []
     for i, slide in enumerate(prs.slides, 1):
         title = f"Slide {i}"
@@ -98,18 +123,24 @@ def _get_slide_titles(pptx_path: str) -> list[str]:
     return titles
 
 
-def _slides_have_titles(pptx_path: str) -> list[bool]:
+def _slides_have_titles(input_path: str) -> list[bool]:
     """Return a boolean per slide indicating whether it has a real title shape."""
-    prs = Presentation(pptx_path)
+    if input_path.lower().endswith(".pdf"):
+        # Every PDF page is its own standalone slide (no grouping)
+        count = _get_pdf_page_count(input_path)
+        return [True] * count
+    prs = Presentation(input_path)
     return [
         bool(slide.shapes.title and slide.shapes.title.text.strip())
         for slide in prs.slides
     ]
 
 
-def _get_presentation_title(pptx_path: str) -> str:
-    """Get the presentation title from core properties."""
-    prs = Presentation(pptx_path)
+def _get_presentation_title(input_path: str) -> str:
+    """Get the presentation title from core properties or filename."""
+    if input_path.lower().endswith(".pdf"):
+        return Path(input_path).stem.replace("_", " ").replace("-", " ").title()
+    prs = Presentation(input_path)
     core = prs.core_properties
     if core.title and core.title.strip():
         return core.title.strip()
@@ -118,7 +149,7 @@ def _get_presentation_title(pptx_path: str) -> str:
         s = prs.slides[0]
         if s.shapes.title and s.shapes.title.text.strip():
             return s.shapes.title.text.strip()
-    return Path(pptx_path).stem.replace("_", " ").replace("-", " ").title()
+    return Path(input_path).stem.replace("_", " ").replace("-", " ").title()
 
 
 # ─────────────────────────────────────────────
@@ -560,10 +591,44 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
     .viewer.continuous .continuous-slide {{
       margin-bottom: 24px;
     }}
+
+    /* ── Loading overlay ── */
+    .loading-overlay {{
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }}
+    .loading-spinner {{
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }}
+    @keyframes spin {{
+      to {{ transform: rotate(360deg); }}
+    }}
+    .loading-text {{
+      margin-top: 16px;
+      color: var(--text-secondary);
+      font-size: 14px;
+    }}
   </style>
 </head>
 <body>
 <div id="app">
+  <!-- Loading overlay -->
+  <div v-if="loading" class="loading-overlay">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">Loading course...</div>
+  </div>
+
   <!-- Header -->
   <div class="header">
     <button v-if="showSidebar" class="hamburger-btn" @click="sidebarOpen = !sidebarOpen" title="Toggle slides menu">
@@ -652,6 +717,7 @@ createApp({{
     const sidebarOpen = ref(true);
     const displayMode = ref(DISPLAY_MODE);
     const scrollViewer = ref(null);
+    const loading = ref(true);
 
     const totalSlides = slides.value.reduce((sum, s) => sum + s.slideCount, 0);
     const showSidebar = computed(() => slides.value.filter(s => s.showInSidebar).length > 1);
@@ -679,10 +745,10 @@ createApp({{
       SCORM.setProgress(measure);
       saveBookmark();
 
-      if (viewedCount === totalSlides && !completed.value && displayMode.value !== 'continuous') {{
+      if (viewedCount === totalSlides && !completed.value) {{
         completed.value = true;
         SCORM.complete();
-        showComplete.value = true;
+        if (displayMode.value !== 'continuous') showComplete.value = true;
       }}
     }}
 
@@ -747,93 +813,86 @@ createApp({{
     }}
 
     onMounted(() => {{
-      SCORM.init();
+      // Wait for SVG images to load, then initialize SCORM
+      nextTick(() => {{
+        const imgs = document.querySelectorAll('.slide-svg-img');
+        const imagePromises = Array.from(imgs).map(img =>
+          img.complete ? Promise.resolve() : new Promise(r => {{
+            img.addEventListener('load', r, {{ once: true }});
+            img.addEventListener('error', r, {{ once: true }});
+          }})
+        );
 
-      // Restore bookmark from previous session
-      const savedLoc = SCORM.getLocation();
-      const savedData = SCORM.getSuspendData();
+        Promise.all(imagePromises).then(() => {{
+          return SCORM.init(3, 1000);
+        }}).then(() => {{
+          // Restore bookmark from previous session
+          const savedLoc = SCORM.getLocation();
+          const savedData = SCORM.getSuspendData();
 
-      if (savedData) {{
-        try {{
-          const arr = JSON.parse(savedData);
-          if (Array.isArray(arr)) {{
-            arr.forEach(i => visited.value.add(i));
+          if (savedData) {{
+            try {{
+              const arr = JSON.parse(savedData);
+              if (Array.isArray(arr)) {{
+                arr.forEach(i => visited.value.add(i));
+              }}
+            }} catch(e) {{ /* ignore corrupt data */ }}
           }}
-        }} catch(e) {{ /* ignore corrupt data */ }}
-      }}
 
-      const resumeSlide = savedLoc ? parseInt(savedLoc, 10) : 0;
-      if (resumeSlide >= 0 && resumeSlide < slides.value.length) {{
-        current.value = resumeSlide;
-      }}
+          const resumeSlide = savedLoc ? parseInt(savedLoc, 10) : 0;
+          if (resumeSlide >= 0 && resumeSlide < slides.value.length) {{
+            current.value = resumeSlide;
+          }}
 
-      // Update progress from restored visited set
-      markVisited(current.value);
+          // Update progress from restored visited set
+          markVisited(current.value);
 
-      // Continuous mode: track scroll position for progress and completion
-      if (displayMode.value === 'continuous') {{
-        nextTick(() => {{
-          const viewer = scrollViewer.value;
-          if (!viewer) return;
-
-          // Scroll to resumed slide position after SVG images load
-          if (current.value > 0) {{
-            const imgs = viewer.querySelectorAll('.slide-svg-img');
-            if (imgs.length) {{
-              const loaded = Array.from(imgs).map(img =>
-                img.complete ? Promise.resolve() : new Promise(r => {{
-                  img.addEventListener('load', r, {{ once: true }});
-                  img.addEventListener('error', r, {{ once: true }});
-                }})
-              );
-              Promise.all(loaded).then(() => {{
+          // Continuous mode: scroll to resume position and set up scroll tracking
+          if (displayMode.value === 'continuous') {{
+            const viewer = scrollViewer.value;
+            if (viewer) {{
+              // Scroll to resumed slide position
+              if (current.value > 0) {{
                 const el = document.getElementById('slide-' + current.value);
                 if (el) el.scrollIntoView({{ behavior: 'instant', block: 'start' }});
+              }}
+
+              // Don't observe slides until first scroll — prevents auto-marking on load
+              let observerStarted = false;
+              const observer = new IntersectionObserver((entries) => {{
+                entries.forEach(entry => {{
+                  if (entry.isIntersecting) {{
+                    const idx = parseInt(entry.target.id.replace('slide-', ''), 10);
+                    if (!isNaN(idx)) {{
+                      current.value = idx;
+                      markVisited(idx);
+                    }}
+                  }}
+                }});
+              }}, {{
+                root: viewer,
+                threshold: 0.3,
+              }});
+
+              const startObserving = () => {{
+                if (observerStarted) return;
+                observerStarted = true;
+                slides.value.forEach((_, i) => {{
+                  const el = document.getElementById('slide-' + i);
+                  if (el) observer.observe(el);
+                }});
+              }};
+
+              viewer.addEventListener('scroll', () => {{
+                startObserving();
               }});
             }}
           }}
 
-          // Don't observe slides until first scroll — prevents auto-marking on load
-          let observerStarted = false;
-          const observer = new IntersectionObserver((entries) => {{
-            entries.forEach(entry => {{
-              if (entry.isIntersecting) {{
-                const idx = parseInt(entry.target.id.replace('slide-', ''), 10);
-                if (!isNaN(idx)) {{
-                  current.value = idx;
-                  markVisited(idx);
-                }}
-              }}
-            }});
-          }}, {{
-            root: viewer,
-            threshold: 0.3,
-          }});
-
-          const startObserving = () => {{
-            if (observerStarted) return;
-            observerStarted = true;
-            slides.value.forEach((_, i) => {{
-              const el = document.getElementById('slide-' + i);
-              if (el) observer.observe(el);
-            }});
-          }};
-
-          viewer.addEventListener('scroll', () => {{
-            startObserving();
-            // Complete when scrolled to the bottom
-            if (!completed.value && viewer.scrollTop + viewer.clientHeight >= viewer.scrollHeight - 20) {{
-              for (let i = 0; i < slides.value.length; i++) {{
-                visited.value.add(i);
-              }}
-              SCORM.setProgress(1);
-              completed.value = true;
-              SCORM.complete();
-              saveBookmark();
-            }}
-          }});
+          // Content loaded, SCORM initialized — remove loading overlay
+          loading.value = false;
         }});
-      }}
+      }});
     }});
 
     onBeforeUnmount(() => {{
@@ -844,7 +903,7 @@ createApp({{
 
     return {{ slides, current, visited, progressPct, showComplete, completed,
               sidebarOpen, showSidebar, totalSlides, displayMode, scrollViewer,
-              goTo, next, prev, restart, closeCourse,
+              loading, goTo, next, prev, restart, closeCourse,
               sidebarNumber, isActiveGroup }};
   }}
 }}).mount('#app');
@@ -887,28 +946,47 @@ const SCORM = (() => {
     return _api;
   }
 
-  function init() {
-    if (_initialized || _terminated) return;
-    const api = getAPI();
-    if (!api) {
-      console.warn('[SCORM] No LMS API found – running in standalone mode.');
-      return;
-    }
-    const result = api.Initialize('');
-    if (result === 'true' || result === true) {
-      _initialized = true;
-      // Only set defaults if not resuming a previous session
-      const existingStatus = api.GetValue('cmi.completion_status');
-      if (!existingStatus || existingStatus === 'not attempted' || existingStatus === 'unknown') {
-        api.SetValue('cmi.completion_status', 'incomplete');
-        api.SetValue('cmi.success_status', 'unknown');
-        api.SetValue('cmi.progress_measure', '0');
+  function init(retries, delay) {
+    retries = retries || 3;
+    delay = delay || 1000;
+    return new Promise(function(resolve) {
+      function attempt(n) {
+        var api = getAPI();
+        if (!api) {
+          if (n < retries) {
+            console.warn('[SCORM] API not found, retrying (' + (n + 1) + '/' + retries + ')...');
+            setTimeout(function() { attempt(n + 1); }, delay);
+            return;
+          }
+          console.warn('[SCORM] No LMS API found after ' + retries + ' attempts – running in standalone mode.');
+          resolve(false);
+          return;
+        }
+        var result = api.Initialize('');
+        if (result === 'true' || result === true) {
+          _initialized = true;
+          var existingStatus = api.GetValue('cmi.completion_status');
+          if (!existingStatus || existingStatus === 'not attempted' || existingStatus === 'unknown') {
+            api.SetValue('cmi.completion_status', 'incomplete');
+            api.SetValue('cmi.success_status', 'unknown');
+            api.SetValue('cmi.progress_measure', '0');
+          }
+          api.Commit('');
+          console.log('[SCORM] Initialized.');
+          resolve(true);
+        } else {
+          if (n < retries) {
+            console.warn('[SCORM] Initialize failed, retrying (' + (n + 1) + '/' + retries + ')...');
+            setTimeout(function() { attempt(n + 1); }, delay);
+          } else {
+            console.error('[SCORM] Initialize failed after ' + retries + ' attempts:', api.GetLastError(), api.GetErrorString(api.GetLastError()));
+            resolve(false);
+          }
+        }
       }
-      api.Commit('');
-      console.log('[SCORM] Initialized.');
-    } else {
-      console.error('[SCORM] Initialize failed:', api.GetLastError(), api.GetErrorString(api.GetLastError()));
-    }
+      if (_initialized || _terminated) { resolve(_initialized); return; }
+      attempt(0);
+    });
   }
 
   function setProgress(measure) {

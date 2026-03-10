@@ -224,8 +224,8 @@ def _save_base64_file(file_content_base64: str, filename: str) -> str:
         raise ValueError("Invalid base64 content. Ensure the file is base64-encoded.")
 
     ext = os.path.splitext(filename)[1].lower() if filename else ".pptx"
-    if ext not in (".ppt", ".pptx"):
-        raise ValueError(f"Unsupported file type '{ext}'. Only .ppt and .pptx are accepted.")
+    if ext not in (".ppt", ".pptx", ".pdf"):
+        raise ValueError(f"Unsupported file type '{ext}'. Only .ppt, .pptx, and .pdf are accepted.")
 
     file_id = hashlib.sha256(os.urandom(32)).hexdigest()[:16]
     dest = os.path.join(UPLOAD_DIR, f"{file_id}{ext}")
@@ -252,12 +252,12 @@ def convert_presentation(
     display_mode: str = "paginated",
     theme: str = "light",
 ) -> str:
-    """Convert a PPTX/PPT file to a SCORM 2004 3rd Edition ZIP package.
+    """Convert a PPTX/PPT/PDF file to a SCORM 2004 3rd Edition ZIP package.
 
     Send the file content as base64 and get back a download URL for the SCORM ZIP.
 
     Args:
-        file_content_base64: The .pptx or .ppt file content, base64-encoded.
+        file_content_base64: The .pptx, .ppt, or .pdf file content, base64-encoded.
         filename: Original filename (e.g. "My Slides.pptx"). Used for the output name.
         course_title: Optional override for the course title.
         display_mode: 'paginated' (one slide at a time) or 'continuous' (scrollable view). Default: 'paginated'.
@@ -305,12 +305,12 @@ def get_presentation_info(
     file_content_base64: str,
     filename: str = "presentation.pptx",
 ) -> str:
-    """Get metadata from a PPTX file without converting it.
+    """Get metadata from a PPTX/PDF file without converting it.
 
-    Send the file content as base64 to preview slide count and titles.
+    Send the file content as base64 to preview slide/page count and titles.
 
     Args:
-        file_content_base64: The .pptx or .ppt file content, base64-encoded.
+        file_content_base64: The .pptx, .ppt, or .pdf file content, base64-encoded.
         filename: Original filename (e.g. "My Slides.pptx").
 
     Returns:
