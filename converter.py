@@ -776,6 +776,12 @@ createApp({{
           const viewer = scrollViewer.value;
           if (!viewer) return;
 
+          // Scroll to resumed slide position
+          if (current.value > 0) {{
+            const el = document.getElementById('slide-' + current.value);
+            if (el) el.scrollIntoView({{ behavior: 'instant', block: 'start' }});
+          }}
+
           // Don't observe slides until first scroll — prevents auto-marking on load
           let observerStarted = false;
           const observer = new IntersectionObserver((entries) => {{
