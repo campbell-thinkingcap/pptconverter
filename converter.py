@@ -1,8 +1,7 @@
 """
 PPTX/PPT → SCORM 2004 3rd Edition Converter
-Extracts slide content (text, images, tables) as HTML, wraps in a Vue 3 SCORM player package.
+Renders slides as SVG via LibreOffice + pdftocairo, wraps in a Vue 3 SCORM player package.
 """
-import html
 import os
 import re
 import json
@@ -14,8 +13,6 @@ from pathlib import Path
 from typing import Optional
 
 from pptx import Presentation
-from pptx.enum.text import PP_ALIGN
-from pptx.enum.shapes import MSO_SHAPE_TYPE
 
 
 # ─────────────────────────────────────────────
@@ -40,333 +37,54 @@ def _convert_ppt_to_pptx(ppt_path: str) -> str:
 
 
 # ─────────────────────────────────────────────
-# HTML Slide Extraction
+# SVG Slide Extraction (LibreOffice + pdftocairo)
 # ─────────────────────────────────────────────
 
-def _run_to_html(run) -> str:
-    """Convert a single text Run to an HTML span with inline styles."""
-    text = html.escape(run.text)
-    if not text:
-        return ""
+def _extract_slide_svgs(pptx_path: str, work_dir: str) -> list[str]:
+    """Convert each slide to SVG via LibreOffice + pdftocairo.
 
-    styles = []
-    font = run.font
-
-    if font.size is not None:
-        styles.append(f"font-size:{font.size.pt:.1f}pt")
-
-    try:
-        if font.color and font.color.rgb is not None:
-            rgb = font.color.rgb
-            r, g, b = int(str(rgb)[0:2], 16), int(str(rgb)[2:4], 16), int(str(rgb)[4:6], 16)
-            luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-            if luminance > 0.85:
-                styles.append("color:#111111")
-            else:
-                styles.append(f"color:#{rgb}")
-    except (AttributeError, ValueError):
-        pass  # theme color without explicit RGB
-
-    if font.bold:
-        styles.append("font-weight:bold")
-    if font.italic:
-        styles.append("font-style:italic")
-    if font.underline:
-        styles.append("text-decoration:underline")
-    if font.name:
-        styles.append(f"font-family:'{html.escape(font.name)}',sans-serif")
-
-    if styles:
-        return f'<span style="{";".join(styles)}">{text}</span>'
-    return text
-
-
-def _text_frame_to_html(text_frame, is_title: bool = False) -> str:
-    """Convert a TextFrame's paragraphs and runs to formatted HTML."""
-    parts = []
-    first_nonempty = True
-
-    for paragraph in text_frame.paragraphs:
-        # Determine alignment
-        align_map = {
-            PP_ALIGN.LEFT: "left",
-            PP_ALIGN.CENTER: "center",
-            PP_ALIGN.RIGHT: "right",
-            PP_ALIGN.JUSTIFY: "justify",
-        }
-        text_align = align_map.get(paragraph.alignment, "inherit")
-        p_style = f"text-align:{text_align};margin:0;padding:2px 0;line-height:1.4"
-
-        # Build runs HTML
-        runs_html = "".join(_run_to_html(run) for run in paragraph.runs)
-
-        if not runs_html.strip():
-            parts.append(f'<p style="{p_style}">&nbsp;</p>')
-            continue
-
-        if is_title and first_nonempty:
-            parts.append(f'<h1 style="{p_style}">{runs_html}</h1>')
-            first_nonempty = False
-        elif is_title:
-            parts.append(f'<h2 style="{p_style}">{runs_html}</h2>')
-        else:
-            parts.append(f'<p style="{p_style}">{runs_html}</p>')
-
-    return "\n".join(parts)
-
-
-def _get_slide_background(slide) -> str:
-    """Extract slide background color, defaulting to white."""
-    try:
-        fill = slide.background.fill
-        if fill.type is not None:
-            rgb = fill.fore_color.rgb
-            return f"#{rgb}"
-    except Exception:
-        pass
-    return "#ffffff"
-
-
-def _is_title_shape(shape) -> bool:
-    """Check if a shape is a title/subtitle placeholder."""
-    if not shape.is_placeholder:
-        return False
-    try:
-        return shape.placeholder_format.idx in (0, 1, 13)
-    except Exception:
-        return False
-
-
-def _picture_to_html(shape, images_dir: str, image_counter: list) -> str:
-    """Extract image from a Picture shape, save to disk, return an <img> tag."""
-    image_counter[0] += 1
-    try:
-        blob = shape.image.blob
-        ext = shape.image.ext
-    except Exception:
-        return ""
-
-    filename = f"img-{str(image_counter[0]).zfill(3)}.{ext}"
-    filepath = os.path.join(images_dir, filename)
-    with open(filepath, "wb") as f:
-        f.write(blob)
-
-    rel_path = f"slides/images/{filename}"
-    return (
-        f'<div class="shape-image">'
-        f'<img src="{rel_path}" alt="" />'
-        f'</div>'
-    )
-
-
-def _table_to_html(shape) -> str:
-    """Convert a Table shape to an HTML <table> element."""
-    table = shape.table
-    rows_html = []
-
-    # Track cells claimed by merges
-    claimed = set()
-    for row_idx in range(len(table.rows)):
-        for col_idx in range(len(table.columns)):
-            cell = table.cell(row_idx, col_idx)
-            if cell.is_merge_origin:
-                for dr in range(cell.span_height):
-                    for dc in range(cell.span_width):
-                        if dr == 0 and dc == 0:
-                            continue
-                        claimed.add((row_idx + dr, col_idx + dc))
-
-    for row_idx in range(len(table.rows)):
-        cells_html = []
-        for col_idx in range(len(table.columns)):
-            if (row_idx, col_idx) in claimed:
-                continue
-            cell = table.cell(row_idx, col_idx)
-            cell_content = _text_frame_to_html(cell.text_frame)
-            span_attrs = ""
-            if cell.is_merge_origin:
-                if cell.span_height > 1:
-                    span_attrs += f' rowspan="{cell.span_height}"'
-                if cell.span_width > 1:
-                    span_attrs += f' colspan="{cell.span_width}"'
-            cells_html.append(
-                f'<td{span_attrs} style="border:1px solid #ccc;padding:4px 8px;vertical-align:top;">'
-                f'{cell_content}</td>'
-            )
-        rows_html.append(f'<tr>{"".join(cells_html)}</tr>')
-
-    return (
-        f'<div class="shape-table">'
-        f'<table style="width:100%;border-collapse:collapse;font-size:11pt;">'
-        f'{"".join(rows_html)}'
-        f'</table></div>'
-    )
-
-
-def _text_shape_to_html(shape) -> str:
-    """Convert a text-containing shape to a flow-layout HTML div."""
-    is_title = _is_title_shape(shape)
-
-    # Shape background
-    bg_css = ""
-    try:
-        fill = shape.fill
-        if fill.type is not None and str(fill.type) != "BACKGROUND (6)":
-            rgb = fill.fore_color.rgb
-            bg_css = f"background-color:#{rgb};padding:12px 16px;border-radius:6px;"
-    except Exception:
-        pass
-
-    inner = _text_frame_to_html(shape.text_frame, is_title)
-    if not inner.strip():
-        return ""
-
-    css_class = "shape-title" if is_title else "shape-text"
-    style_attr = f' style="{bg_css}"' if bg_css else ""
-    return f'<div class="{css_class}"{style_attr}>{inner}</div>'
-
-
-def _shape_to_html_flow(
-    shape,
-    images_dir: str,
-    image_counter: list,
-) -> str:
-    """Convert a shape to a flow-layout HTML element (no absolute positioning)."""
-    shape_type = shape.shape_type
-
-    if shape_type == MSO_SHAPE_TYPE.PICTURE:
-        return _picture_to_html(shape, images_dir, image_counter)
-
-    if shape.has_table:
-        return _table_to_html(shape)
-
-    if shape_type == MSO_SHAPE_TYPE.GROUP:
-        return _group_to_html(shape, images_dir, image_counter)
-
-    if shape.has_text_frame:
-        return _text_shape_to_html(shape)
-
-    return ""
-
-
-def _group_to_html(shape, images_dir: str, image_counter: list) -> str:
-    """Recursively process a group shape into flow layout."""
-    children_html = []
-    for child in shape.shapes:
-        child_html = _shape_to_html_flow(child, images_dir, image_counter)
-        if child_html:
-            children_html.append(child_html)
-
-    if not children_html:
-        return ""
-
-    return f'<div class="shape-group">{"".join(children_html)}</div>'
-
-
-def _extract_slide_html(pptx_path: str, work_dir: str) -> list[str]:
+    Pipeline: PPTX → PDF (LibreOffice) → SVG per page (pdftocairo)
+    SVGs are saved to work_dir/slides/ and returned as <img> tag HTML strings.
     """
-    Extract each slide from the PPTX as an HTML string using flow layout.
-    Shapes are sorted top-to-bottom; horizontally adjacent shapes are grouped
-    into CSS grid rows with proportional column widths.
-    Images are saved to work_dir/slides/images/ and referenced via relative paths.
-    Returns list of HTML strings, one per slide.
-    """
+    slides_dir = os.path.join(work_dir, "slides")
+    os.makedirs(slides_dir, exist_ok=True)
+
+    # 1. PPTX → PDF via LibreOffice
+    result = subprocess.run(
+        ["libreoffice", "--headless", "--convert-to", "pdf", "--outdir", work_dir, pptx_path],
+        capture_output=True, text=True, timeout=120,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"LibreOffice PDF conversion failed: {result.stderr.strip()}")
+
+    pdf_name = Path(pptx_path).stem + ".pdf"
+    pdf_path = os.path.join(work_dir, pdf_name)
+    if not os.path.exists(pdf_path):
+        raise RuntimeError(f"LibreOffice did not produce expected PDF: {pdf_name}")
+
+    # 2. Get slide count from python-pptx
     prs = Presentation(pptx_path)
-    slide_height = prs.slide_height
+    num_slides = len(prs.slides)
 
-    images_dir = os.path.join(work_dir, "slides", "images")
-    os.makedirs(images_dir, exist_ok=True)
-
-    image_counter = [0]
-    slide_html_list = []
-
-    for slide in prs.slides:
-        bg_color = _get_slide_background(slide)
-
-        # Collect shapes that have renderable content
-        shape_entries = []
-        for shape in slide.shapes:
-            has_content = (
-                shape.shape_type == MSO_SHAPE_TYPE.PICTURE
-                or shape.has_table
-                or shape.shape_type == MSO_SHAPE_TYPE.GROUP
-                or shape.has_text_frame
-            )
-            if not has_content:
-                continue
-            shape_entries.append({
-                "shape": shape,
-                "top": shape.top,
-                "left": shape.left,
-                "width": shape.width,
-                "is_title": _is_title_shape(shape),
-            })
-
-        # Sort by vertical position, then horizontal
-        shape_entries.sort(key=lambda e: (e["top"], e["left"]))
-
-        # Group into rows: shapes with similar top values go side-by-side
-        ROW_TOLERANCE = slide_height * 0.10
-        rows: list[list[dict]] = []
-        current_row: list[dict] = []
-
-        for entry in shape_entries:
-            # Title shapes always get their own full-width row
-            if entry["is_title"]:
-                if current_row:
-                    rows.append(current_row)
-                    current_row = []
-                rows.append([entry])
-                continue
-
-            if not current_row:
-                current_row = [entry]
-            elif abs(entry["top"] - current_row[0]["top"]) <= ROW_TOLERANCE:
-                current_row.append(entry)
-            else:
-                rows.append(current_row)
-                current_row = [entry]
-
-        if current_row:
-            rows.append(current_row)
-
-        # Render rows into HTML
-        shapes_html = []
-        for row in rows:
-            row.sort(key=lambda e: e["left"])
-
-            row_parts = []
-            for entry in row:
-                h = _shape_to_html_flow(entry["shape"], images_dir, image_counter)
-                if h:
-                    row_parts.append({"html": h, "width": entry["width"]})
-
-            if not row_parts:
-                continue
-
-            if len(row_parts) == 1:
-                shapes_html.append(row_parts[0]["html"])
-            else:
-                # CSS grid with proportional columns based on shape widths
-                fr_cols = " ".join(f"{p['width']}fr" for p in row_parts)
-                inner = "".join(
-                    f'<div>{p["html"]}</div>' for p in row_parts
-                )
-                shapes_html.append(
-                    f'<div class="slide-row" style="display:grid;'
-                    f'grid-template-columns:{fr_cols};gap:16px;align-items:start;">'
-                    f'{inner}</div>'
-                )
-
-        slide_div = (
-            f'<div class="slide-content" style="width:100%;'
-            f'background:{bg_color};padding:32px 40px;">'
-            f'{"".join(shapes_html)}'
-            f'</div>'
+    # 3. PDF → SVG per page via pdftocairo
+    slide_content_list = []
+    for page in range(1, num_slides + 1):
+        svg_name = f"slide-{page:02d}"
+        svg_path = os.path.join(slides_dir, svg_name)
+        result = subprocess.run(
+            ["pdftocairo", "-svg", "-f", str(page), "-l", str(page), pdf_path, svg_path],
+            capture_output=True, text=True, timeout=60,
         )
-        slide_html_list.append(slide_div)
+        if result.returncode != 0:
+            raise RuntimeError(f"pdftocairo failed on page {page}: {result.stderr.strip()}")
 
-    return slide_html_list
+        # pdftocairo appends .svg to the output name
+        rel_path = f"slides/{svg_name}.svg"
+        slide_content_list.append(
+            f'<img src="{rel_path}" class="slide-svg-img" alt="Slide {page}" />'
+        )
+
+    return slide_content_list
 
 
 def _get_slide_titles(pptx_path: str) -> list[str]:
@@ -408,9 +126,9 @@ def _get_presentation_title(pptx_path: str) -> str:
 # imsmanifest.xml (SCORM 2004 3rd Edition)
 # ─────────────────────────────────────────────
 
-def _build_manifest(course_id: str, title: str, image_files: list[str]) -> str:
-    image_refs = "".join(
-        f'<file href="slides/images/{f}"/>\n      ' for f in image_files
+def _build_manifest(course_id: str, title: str, svg_files: list[str]) -> str:
+    svg_refs = "".join(
+        f'<file href="slides/{f}"/>\n      ' for f in svg_files
     )
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <manifest identifier="{course_id}"
@@ -449,7 +167,7 @@ def _build_manifest(course_id: str, title: str, image_files: list[str]) -> str:
       adlcp:scormType="sco" href="index.html">
       <file href="index.html"/>
       <file href="scorm.js"/>
-      {image_refs}
+      {svg_refs}
     </resource>
   </resources>
 </manifest>"""
@@ -712,86 +430,23 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
       position: relative;
       width: 100%;
       max-width: 960px;
-      background: #fff;
       border-radius: 8px;
       box-shadow: 0 20px 60px var(--shadow);
-      overflow: visible;
+      overflow: hidden;
       flex-shrink: 0;
     }}
 
-    /* ── Slide HTML content ── */
-    .slide-html-content {{
+    /* ── SVG slide content ── */
+    .slide-svg-content {{
       width: 100%;
     }}
-    .slide-html-content .slide-content {{
+    .slide-svg-content .slide-svg-img {{
       width: 100%;
-      color: #111111;
-      font-family: 'Segoe UI', Calibri, Arial, sans-serif;
-      line-height: 1.6;
-    }}
-
-    /* ── Title shapes ── */
-    .slide-html-content .shape-title {{
-      margin-bottom: 20px;
-    }}
-    .slide-html-content .shape-title h1 {{
-      font-size: 28px;
-      font-weight: 700;
-      line-height: 1.2;
-      margin: 0 0 4px 0;
-      color: #1a1a2e;
-    }}
-    .slide-html-content .shape-title h2 {{
-      font-size: 22px;
-      font-weight: 600;
-      line-height: 1.3;
-      margin: 0;
-      color: #333;
-    }}
-
-    /* ── Text shapes ── */
-    .slide-html-content .shape-text {{
-      margin-bottom: 16px;
-    }}
-    .slide-html-content .shape-text p {{
-      margin: 0 0 6px 0;
-      line-height: 1.6;
-    }}
-
-    /* ── Image shapes ── */
-    .slide-html-content .shape-image {{
-      margin: 16px 0;
-      text-align: center;
-    }}
-    .slide-html-content .shape-image img {{
-      max-width: 100%;
       height: auto;
-      border-radius: 6px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      display: block;
     }}
-
-    /* ── Table shapes ── */
-    .slide-html-content .shape-table {{
-      margin: 16px 0;
-      overflow-x: auto;
-    }}
-    .slide-html-content .shape-table table {{
-      width: 100%;
-      border-collapse: collapse;
-    }}
-
-    /* ── Group shapes ── */
-    .slide-html-content .shape-group {{
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      align-items: flex-start;
-      margin-bottom: 16px;
-    }}
-
-    /* ── Grid rows (side-by-side shapes) ── */
-    .slide-html-content .slide-row {{
-      margin-bottom: 16px;
+    .slide-svg-content .slide-svg-img + .slide-svg-img {{
+      margin-top: 4px;
     }}
 
     /* ── Controls ── */
@@ -946,7 +601,7 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
     <!-- Paginated viewer -->
     <div v-if="displayMode === 'paginated'" class="viewer">
       <div class="slide-container">
-        <div class="slide-html-content" v-html="slides[current].content"></div>
+        <div class="slide-svg-content" v-html="slides[current].content"></div>
 
         <!-- Completion overlay -->
         <div v-if="showComplete" class="complete-overlay">
@@ -975,7 +630,7 @@ def _build_player_html(title: str, slide_titles: list[str], slide_html_list: lis
       <div v-for="(slide, i) in slides" :key="i"
            :id="'slide-' + i"
            class="slide-container continuous-slide">
-        <div class="slide-html-content" v-html="slide.content"></div>
+        <div class="slide-svg-content" v-html="slide.content"></div>
       </div>
     </div>
   </div>
@@ -1341,8 +996,8 @@ def convert_pptx_to_scorm(
         slide_titles = _get_slide_titles(pptx_path)
         has_title_flags = _slides_have_titles(pptx_path)
 
-        # 2. Extract slides as HTML
-        slide_html_list = _extract_slide_html(pptx_path, work_dir)
+        # 2. Convert slides to SVG (PPTX → PDF → SVG per page)
+        slide_html_list = _extract_slide_svgs(pptx_path, work_dir)
         if not slide_html_list:
             raise RuntimeError("No slides were found in the presentation.")
 
@@ -1386,17 +1041,15 @@ def convert_pptx_to_scorm(
         pkg_dir = os.path.join(work_dir, "package")
         os.makedirs(pkg_dir)
 
-        # 3a. Copy extracted images to package
-        src_images = os.path.join(work_dir, "slides", "images")
-        dst_images = os.path.join(pkg_dir, "slides", "images")
-        image_files = []
-        if os.path.exists(src_images) and os.listdir(src_images):
-            shutil.copytree(src_images, dst_images)
-            image_files = sorted(os.listdir(dst_images))
+        # 3a. Copy SVG slides to package
+        src_slides = os.path.join(work_dir, "slides")
+        dst_slides = os.path.join(pkg_dir, "slides")
+        shutil.copytree(src_slides, dst_slides)
+        svg_files = sorted(f for f in os.listdir(dst_slides) if f.endswith(".svg"))
 
         # 3b. Write imsmanifest.xml
         course_id = re.sub(r"[^A-Za-z0-9]", "_", title)[:40].upper()
-        manifest = _build_manifest(course_id, title, image_files)
+        manifest = _build_manifest(course_id, title, svg_files)
         with open(os.path.join(pkg_dir, "imsmanifest.xml"), "w", encoding="utf-8") as f:
             f.write(manifest)
 

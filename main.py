@@ -1341,7 +1341,7 @@ async def api_info():
         "scorm_version": "2004 3rd Edition",
         "supported_input_formats": [".pptx", ".ppt"],
         "output_format": "zip",
-        "slide_renderer": "python-pptx HTML extraction",
+        "slide_renderer": "LibreOffice SVG (via pdftocairo)",
         "scorm_player": "Vue 3 (CDN, no build step)",
         "tracked_cmi_elements": [
             "cmi.progress_measure",
