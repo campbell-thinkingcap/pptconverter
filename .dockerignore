@@ -1,0 +1,16 @@
+.git
+.github
+node_modules
+frontend/node_modules
+dist
+frontend/dist
+__pycache__
+*.pyc
+*.pyo
+venv
+.venv
+*.zip
+*.pptx
+*.pdf
+*.doc
+*.docx
