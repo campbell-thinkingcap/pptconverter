@@ -14,7 +14,9 @@
       "Bash(pip install:*)",
       "Bash(ls:*)",
       "Bash(where:*)",
-      "Read(//c/Program Files/**)"
+      "Read(//c/Program Files/**)",
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)"
     ]
   }
 }

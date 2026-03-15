@@ -85,8 +85,11 @@ def _extract_slide_svgs(input_path: str, work_dir: str) -> list[str]:
         if not os.path.exists(pdf_path):
             raise RuntimeError(f"LibreOffice did not produce expected PDF: {pdf_name}")
 
-        prs = Presentation(input_path)
-        num_slides = len(prs.slides)
+        if input_path.lower().endswith((".doc", ".docx")):
+            num_slides = _get_pdf_page_count(pdf_path)
+        else:
+            prs = Presentation(input_path)
+            num_slides = len(prs.slides)
 
     # PDF → SVG per page via pdftocairo
     slide_content_list = []
@@ -108,10 +111,11 @@ def _extract_slide_svgs(input_path: str, work_dir: str) -> list[str]:
     return slide_content_list
 
 
-def _get_slide_titles(input_path: str) -> list[str]:
+def _get_slide_titles(input_path: str, count: int = 0) -> list[str]:
     """Extract slide titles for accessibility & navigation."""
-    if input_path.lower().endswith(".pdf"):
-        count = _get_pdf_page_count(input_path)
+    if input_path.lower().endswith((".pdf", ".doc", ".docx")):
+        if count == 0 and input_path.lower().endswith(".pdf"):
+            count = _get_pdf_page_count(input_path)
         return [f"Page {i}" for i in range(1, count + 1)]
     prs = Presentation(input_path)
     titles = []
@@ -123,11 +127,12 @@ def _get_slide_titles(input_path: str) -> list[str]:
     return titles
 
 
-def _slides_have_titles(input_path: str) -> list[bool]:
+def _slides_have_titles(input_path: str, count: int = 0) -> list[bool]:
     """Return a boolean per slide indicating whether it has a real title shape."""
-    if input_path.lower().endswith(".pdf"):
-        # Every PDF page is its own standalone slide (no grouping)
-        count = _get_pdf_page_count(input_path)
+    if input_path.lower().endswith((".pdf", ".doc", ".docx")):
+        # Every PDF/Doc page is its own standalone slide (no grouping)
+        if count == 0 and input_path.lower().endswith(".pdf"):
+            count = _get_pdf_page_count(input_path)
         return [True] * count
     prs = Presentation(input_path)
     return [
@@ -138,7 +143,7 @@ def _slides_have_titles(input_path: str) -> list[bool]:
 
 def _get_presentation_title(input_path: str) -> str:
     """Get the presentation title from core properties or filename."""
-    if input_path.lower().endswith(".pdf"):
+    if input_path.lower().endswith((".pdf", ".doc", ".docx")):
         return Path(input_path).stem.replace("_", " ").replace("-", " ").title()
     prs = Presentation(input_path)
     core = prs.core_properties
@@ -1085,15 +1090,15 @@ def convert_pptx_to_scorm(
             pptx_path = _convert_ppt_to_pptx(pptx_path)
             converted_pptx = pptx_path  # track for cleanup
 
-        # 1. Extract metadata
-        title = course_title or _get_presentation_title(pptx_path)
-        slide_titles = _get_slide_titles(pptx_path)
-        has_title_flags = _slides_have_titles(pptx_path)
-
         # 2. Convert slides to SVG (PPTX → PDF → SVG per page)
         slide_html_list = _extract_slide_svgs(pptx_path, work_dir)
         if not slide_html_list:
             raise RuntimeError("No slides were found in the presentation.")
+
+        # 1. Extract metadata
+        title = course_title or _get_presentation_title(pptx_path)
+        slide_titles = _get_slide_titles(pptx_path, count=len(slide_html_list))
+        has_title_flags = _slides_have_titles(pptx_path, count=len(slide_html_list))
 
         # Pad slide titles if count differs
         while len(slide_titles) < len(slide_html_list):
