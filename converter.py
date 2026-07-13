@@ -1114,8 +1114,13 @@ def convert_pptx_to_scorm(
                 zip(slide_html_list, slide_titles, has_title_flags)
             ):
                 if has_t or not grouped:
-                    grouped.append({"title": s_title, "content": s_html, "count": 1})
+                    # New group if this slide has a title OR if there's no group yet
+                    grouped.append({"title": s_title, "content": s_html, "count": 1, "has_title": has_t})
+                elif not grouped[-1].get("has_title", False):
+                    # Previous group has no title either, so create a new group instead of merging
+                    grouped.append({"title": s_title, "content": s_html, "count": 1, "has_title": has_t})
                 else:
+                    # Merge into the previous group (which has a title)
                     grouped[-1]["content"] += s_html
                     grouped[-1]["count"] += 1
 
